@@ -20,24 +20,49 @@ export class OllamaService {
 
   async chat(messages: OllamaMessage[]): Promise<string> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/chat`, {
+      const response = await fetch(`${this.baseUrl}/api/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           model: this.model,
-          messages,
-          stream: false,
-        } as OllamaRequest),
+          prompt: messages[messages.length - 1].content,
+        }),
       });
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const data = await response.json() as OllamaResponse;
-      return data.message.content;
+      // 读取流式响应
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('无法获取响应流');
+      }
+
+      let fullResponse = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        // 将 Uint8Array 转换为文本
+        const chunk = new TextDecoder().decode(value);
+        // 处理每个JSON行
+        const lines = chunk.split('\n').filter(line => line.trim());
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line);
+            if (data.response && !data.done) {
+              fullResponse += data.response;
+            }
+          } catch (e) {
+            console.error('解析响应出错:', e);
+          }
+        }
+      }
+
+      return fullResponse;
     } catch (error) {
       console.error('Error calling Ollama:', error);
       throw error;
