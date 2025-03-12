@@ -197,7 +197,6 @@ export class ComfyUIService {
 
       // 2. 构建请求体
       const updatedWorkflow = { ...workflow };
-      // 只更新正面提示词节点
       if (updatedWorkflow[positiveNode]?.inputs) {
         updatedWorkflow[positiveNode] = {
           ...updatedWorkflow[positiveNode],
@@ -231,7 +230,7 @@ export class ComfyUIService {
       // 4. 轮询检查任务状态
       let imageFilename: string | null = null;
       let attempts = 0;
-      const maxAttempts = 60; // 最多等待60秒
+      const maxAttempts = 60;
 
       while (!imageFilename && attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 1000));

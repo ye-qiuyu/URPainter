@@ -1,8 +1,6 @@
 "use client";
 
 import React, { useState } from 'react';
-import { OllamaService } from '@/services/ai/ollama';
-import { ComfyUIService } from '@/services/ai/comfyui';
 
 export default function TestPage() {
   const [input, setInput] = useState('');
@@ -15,12 +13,29 @@ export default function TestPage() {
     try {
       setLoading(true);
       setError('');
-      const ollama = OllamaService.getInstance();
-      const result = await ollama.chat([
-        { role: 'user', content: input }
-      ]);
-      setResponse(result);
+      
+      console.log('开始发送 LLM 请求...');
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: input
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'LLM 请求失败');
+      }
+
+      const data = await response.json();
+      console.log('收到 LLM 响应:', data);
+      const lastMessage = data.data.messages[data.data.messages.length - 1];
+      setResponse(lastMessage.content);
     } catch (err) {
+      console.error('LLM 请求过程中发生错误:', err);
       setError(err instanceof Error ? err.message : '未知错误');
     } finally {
       setLoading(false);
@@ -32,6 +47,7 @@ export default function TestPage() {
       setLoading(true);
       setError('');
       
+      console.log('开始发送图片生成请求...');
       const response = await fetch('/api/generate-image', {
         method: 'POST',
         headers: {
@@ -40,7 +56,7 @@ export default function TestPage() {
         body: JSON.stringify({
           prompt: input,
           sessionId: 'test-session',
-          workflow: 'test'  // 使用 test.json 工作流
+          workflow: 'test'
         }),
       });
 
@@ -50,8 +66,10 @@ export default function TestPage() {
       }
 
       const data = await response.json();
+      console.log('收到服务器响应:', data);
       setImageUrl(data.data.imageUrl);
     } catch (err) {
+      console.error('请求过程中发生错误:', err);
       setError(err instanceof Error ? err.message : '未知错误');
     } finally {
       setLoading(false);

@@ -37,6 +37,15 @@ const nextConfig = {
             value: 'public, max-age=31536000, must-revalidate',
           }
         ],
+      },
+      {
+        // 添加 CORS 头
+        source: '/api/:path*',
+        headers: [
+          { key: 'Access-Control-Allow-Origin', value: '*' },
+          { key: 'Access-Control-Allow-Methods', value: 'GET,POST,PUT,DELETE,OPTIONS' },
+          { key: 'Access-Control-Allow-Headers', value: 'Content-Type' },
+        ],
       }
     ];
   },
