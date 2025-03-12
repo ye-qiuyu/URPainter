@@ -5,16 +5,12 @@ const nextConfig = {
   poweredByHeader: false,
   compress: true,
   webpack: (config, { dev, isServer }) => {
-    // 添加更多的编译信息
+    // 只在开发模式下添加最小必要的编译信息
     if (dev) {
       config.infrastructureLogging = {
-        level: 'verbose',
-        debug: true,
+        level: 'none',  // 减少基础设施日志
       }
-      config.stats = {
-        loggingDebug: true,
-        logging: 'verbose',
-      }
+      config.stats = 'minimal';  // 使用最小预设
     }
     return config
   },
@@ -53,7 +49,15 @@ const nextConfig = {
     fetches: {
       fullUrl: true,
     },
-    level: 'debug'
+    level: 'info',  // 改为 info 级别
+    api: {
+      level: 'info',
+      bodySize: true,
+      bodyParsed: false  // 不显示解析的请求体
+    },
+    router: {
+      level: 'error'  // 只显示路由错误
+    }
   }
 };
 

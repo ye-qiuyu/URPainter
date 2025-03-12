@@ -1,13 +1,23 @@
 import { AI_SERVICES, API_ENDPOINTS } from '../config';
 import type { ComfyUIWorkflow, ComfyUIPromptResponse, ComfyUIHistoryResponse } from '@/types/ai';
 
+// 添加日志前缀函数
+function log(message: string, data?: any) {
+  const prefix = '[ComfyUI Service]';
+  if (data) {
+    console.log(prefix, message, JSON.stringify(data, null, 2));
+  } else {
+    console.log(prefix, message);
+  }
+}
+
 export class ComfyUIService {
   private static instance: ComfyUIService;
   private baseUrl: string;
 
   private constructor() {
     this.baseUrl = AI_SERVICES.COMFYUI.BASE_URL;
-    console.log('ComfyUI服务初始化，基础URL:', this.baseUrl);
+    log('服务初始化', { baseUrl: this.baseUrl });
   }
 
   public static getInstance(): ComfyUIService {
@@ -45,7 +55,7 @@ export class ComfyUIService {
       currentText: string; 
     }>;
   } {
-    console.log('开始分析工作流节点:', Object.keys(workflow).length, '个节点');
+    log('开始分析工作流节点', { workflowNodeCount: Object.keys(workflow).length });
     
     const allTextNodes: Array<{ 
       id: string; 
@@ -59,33 +69,33 @@ export class ComfyUIService {
     let negativeNodeId: string | null = null;
 
     // 查找 KSampler 节点
-    console.log('开始查找 KSampler 节点...');
+    log('开始查找 KSampler 节点...');
     for (const [nodeId, node] of Object.entries(workflow)) {
-      console.log(`检查节点 ${nodeId}:`, {
+      log(`检查节点 ${nodeId}:`, {
         class_type: node.class_type,
         has_inputs: !!node.inputs,
         input_keys: node.inputs ? Object.keys(node.inputs) : []
       });
 
       if (node.class_type === 'KSampler') {
-        console.log(`找到 KSampler 节点 ${nodeId}, 完整节点内容:`, node);
+        log(`找到 KSampler 节点 ${nodeId}, 完整节点内容:`, node);
         
         if (node.inputs && typeof node.inputs === 'object') {
           const { positive, negative } = node.inputs;
-          console.log('KSampler 输入解析:', { positive, negative });
+          log('KSampler 输入解析:', { positive, negative });
           
           if (Array.isArray(positive) && positive.length > 0) {
             positiveNodeId = String(positive[0]);
-            console.log('找到正面提示词节点ID:', positiveNodeId);
+            log('找到正面提示词节点ID:', positiveNodeId);
           }
           
           if (Array.isArray(negative) && negative.length > 0) {
             negativeNodeId = String(negative[0]);
-            console.log('找到负面提示词节点ID:', negativeNodeId);
+            log('找到负面提示词节点ID:', negativeNodeId);
           }
           
           if (positiveNodeId || negativeNodeId) {
-            console.log('成功解析 KSampler 连接:', {
+            log('成功解析 KSampler 连接:', {
               positive: positiveNodeId,
               negative: negativeNodeId
             });
@@ -95,7 +105,7 @@ export class ComfyUIService {
       }
     }
 
-    console.log('KSampler 节点分析结果:', {
+    log('KSampler 节点分析结果:', {
       found: positiveNodeId !== null || negativeNodeId !== null,
       positiveNodeId,
       negativeNodeId
@@ -107,7 +117,7 @@ export class ComfyUIService {
       if (node.class_type === 'CLIPTextEncode' && node.inputs && 'text' in node.inputs) {
         const currentText = String(node.inputs.text || '');
         
-        console.log(`分析 CLIPTextEncode 节点 ${nodeId}:`, {
+        log(`分析 CLIPTextEncode 节点 ${nodeId}:`, {
           text: currentText,
           meta: node._meta,
           isPositive: nodeId === positiveNodeId,
@@ -119,7 +129,7 @@ export class ComfyUIService {
         const isNegative = nodeId === negativeNodeId;
         
         if (!isPositive && !isNegative) {
-          console.log(`警告: 文本节点 ${nodeId} 未连接到 KSampler`);
+          log(`警告: 文本节点 ${nodeId} 未连接到 KSampler`);
           continue; // 跳过未连接的节点
         }
 
@@ -133,15 +143,15 @@ export class ComfyUIService {
         // 记录正面提示词节点
         if (isPositive) {
           positiveNode = nodeId;
-          console.log(`确认正面提示词节点: ${nodeId}, 文本:`, currentText);
+          log(`确认正面提示词节点: ${nodeId}, 文本:`, currentText);
         } else {
-          console.log(`确认负面提示词节点: ${nodeId}, 文本:`, currentText);
+          log(`确认负面提示词节点: ${nodeId}, 文本:`, currentText);
         }
       }
     }
 
     // 输出详细的节点分析结果
-    console.log('文本节点分析结果:', {
+    log('文本节点分析结果:', {
       totalTextNodes: allTextNodes.length,
       positiveNode,
       allTextNodes,
@@ -171,7 +181,7 @@ export class ComfyUIService {
     sessionId: string
   ): Promise<string> {
     try {
-      console.log('开始生成图片请求:', {
+      log('开始生成图片请求', {
         baseUrl: this.baseUrl,
         promptLength: prompt.length,
         sessionId,
@@ -205,7 +215,7 @@ export class ComfyUIService {
         client_id: sessionId,
       };
       
-      console.log('准备发送请求到 ComfyUI:', {
+      log('准备发送请求到 ComfyUI', {
         url: requestUrl,
         method: 'POST',
         bodySize: JSON.stringify(requestBody).length,
@@ -223,7 +233,7 @@ export class ComfyUIService {
 
         if (!promptResponse.ok) {
           const errorText = await promptResponse.text();
-          console.error('ComfyUI 请求失败:', {
+          log('请求失败', {
             status: promptResponse.status,
             statusText: promptResponse.statusText,
             error: errorText,
@@ -233,10 +243,10 @@ export class ComfyUIService {
         }
 
         const responseData = await promptResponse.json();
-        console.log('ComfyUI 响应成功:', responseData);
+        log('响应成功', responseData);
         
         const { prompt_id } = responseData as ComfyUIPromptResponse;
-        console.log('获取到prompt_id:', prompt_id);
+        log('获取到prompt_id', { prompt_id });
 
         // 4. 轮询检查任务状态
         let imageFilename: string | null = null;
@@ -248,13 +258,13 @@ export class ComfyUIService {
           attempts++;
 
           const historyUrl = `${this.baseUrl}/history/${prompt_id}`;
-          console.log(`检查生成状态 [${attempts}/${maxAttempts}]:`, historyUrl);
+          log(`检查生成状态 [${attempts}/${maxAttempts}]:`, historyUrl);
           
           const historyResponse = await fetch(historyUrl);
           
           if (!historyResponse.ok) {
             const errorText = await historyResponse.text();
-            console.error('历史记录检查失败:', {
+            log('历史记录检查失败', {
               status: historyResponse.status,
               error: errorText,
               url: historyUrl
@@ -266,7 +276,7 @@ export class ComfyUIService {
           imageFilename = this.getImageFilenameFromHistory(history, prompt_id, outputNodes);
           
           if (imageFilename) {
-            console.log('图片生成完成:', imageFilename);
+            log('图片生成完成', { imageFilename });
             break;
           }
         }
@@ -277,22 +287,14 @@ export class ComfyUIService {
 
         // 5. 返回完整的图片URL
         const imageUrl = `${this.baseUrl}/view?filename=${imageFilename}&type=output`;
-        console.log('返回图片URL:', imageUrl);
+        log('返回图片URL', { imageUrl });
         return imageUrl;
-      } catch (fetchError) {
-        console.error('网络请求错误:', {
-          error: fetchError,
-          message: fetchError.message,
-          url: requestUrl
-        });
-        throw fetchError;
+      } catch (error) {
+        log('请求异常', { error });
+        throw error;
       }
     } catch (error) {
-      console.error('ComfyUI服务错误:', {
-        error,
-        message: error.message,
-        baseUrl: this.baseUrl
-      });
+      log('生成图片失败', { error });
       throw error;
     }
   }
