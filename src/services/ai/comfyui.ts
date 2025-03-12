@@ -1,4 +1,4 @@
-import { AI_SERVICES } from '../config';
+import { AI_SERVICES, API_ENDPOINTS } from '../config';
 import type { ComfyUIWorkflow, ComfyUIPromptResponse, ComfyUIHistoryResponse } from '@/types/ai';
 
 export class ComfyUIService {
@@ -7,6 +7,7 @@ export class ComfyUIService {
 
   private constructor() {
     this.baseUrl = AI_SERVICES.COMFYUI.BASE_URL;
+    console.log('ComfyUI服务初始化，基础URL:', this.baseUrl);
   }
 
   public static getInstance(): ComfyUIService {
@@ -170,28 +171,18 @@ export class ComfyUIService {
     sessionId: string
   ): Promise<string> {
     try {
-      console.log('接收到的工作流配置:', workflow);
+      console.log('开始生成图片请求:', {
+        baseUrl: this.baseUrl,
+        promptLength: prompt.length,
+        sessionId,
+        workflowNodeCount: Object.keys(workflow).length
+      });
       
       // 1. 分析工作流结构
       const outputNodes = this.findOutputNodes(workflow);
       const { positiveNode, allTextNodes } = this.findTextNodes(workflow);
 
-      console.log('工作流分析结果:', {
-        outputNodes,
-        positiveNode,
-        allTextNodes,
-        prompt,
-        sessionId,
-        workflowKeys: Object.keys(workflow)
-      });
-
       if (!positiveNode) {
-        console.error('工作流解析失败 - 未找到正面提示词节点:', {
-          availableNodes: Object.entries(workflow).map(([id, node]) => ({
-            id,
-            type: node.class_type
-          }))
-        });
         throw new Error('未找到正面提示词节点');
       }
 
@@ -207,63 +198,101 @@ export class ComfyUIService {
         };
       }
 
-      // 3. 提交生成任务
-      const promptResponse = await fetch(`${this.baseUrl}/prompt`, {
+      // 3. 直接调用 ComfyUI 服务
+      const requestUrl = `${this.baseUrl}/prompt`;
+      const requestBody = {
+        prompt: updatedWorkflow,
+        client_id: sessionId,
+      };
+      
+      console.log('准备发送请求到 ComfyUI:', {
+        url: requestUrl,
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          prompt: updatedWorkflow,
-          client_id: sessionId,
-        }),
+        bodySize: JSON.stringify(requestBody).length,
+        baseUrl: this.baseUrl
       });
 
-      if (!promptResponse.ok) {
-        const errorText = await promptResponse.text();
-        throw new Error(`HTTP error! status: ${promptResponse.status}, message: ${errorText}`);
-      }
+      try {
+        const promptResponse = await fetch(requestUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+        });
 
-      const { prompt_id } = await promptResponse.json() as ComfyUIPromptResponse;
-      console.log('获取到prompt_id:', prompt_id);
-
-      // 4. 轮询检查任务状态
-      let imageFilename: string | null = null;
-      let attempts = 0;
-      const maxAttempts = 60;
-
-      while (!imageFilename && attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        attempts++;
-
-        console.log(`正在检查生成状态，第 ${attempts} 次尝试`);
-        const historyResponse = await fetch(
-          `${this.baseUrl}/history/${prompt_id}`
-        );
-        
-        if (!historyResponse.ok) {
-          const errorText = await historyResponse.text();
-          throw new Error(`History check failed: ${historyResponse.status}, message: ${errorText}`);
+        if (!promptResponse.ok) {
+          const errorText = await promptResponse.text();
+          console.error('ComfyUI 请求失败:', {
+            status: promptResponse.status,
+            statusText: promptResponse.statusText,
+            error: errorText,
+            url: requestUrl
+          });
+          throw new Error(`ComfyUI请求失败: ${promptResponse.status}, ${errorText}`);
         }
 
-        const history = await historyResponse.json() as ComfyUIHistoryResponse;
-        imageFilename = this.getImageFilenameFromHistory(history, prompt_id, outputNodes);
+        const responseData = await promptResponse.json();
+        console.log('ComfyUI 响应成功:', responseData);
         
-        if (imageFilename) {
-          console.log('图片生成完成:', imageFilename);
+        const { prompt_id } = responseData as ComfyUIPromptResponse;
+        console.log('获取到prompt_id:', prompt_id);
+
+        // 4. 轮询检查任务状态
+        let imageFilename: string | null = null;
+        let attempts = 0;
+        const maxAttempts = 60;
+
+        while (!imageFilename && attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          attempts++;
+
+          const historyUrl = `${this.baseUrl}/history/${prompt_id}`;
+          console.log(`检查生成状态 [${attempts}/${maxAttempts}]:`, historyUrl);
+          
+          const historyResponse = await fetch(historyUrl);
+          
+          if (!historyResponse.ok) {
+            const errorText = await historyResponse.text();
+            console.error('历史记录检查失败:', {
+              status: historyResponse.status,
+              error: errorText,
+              url: historyUrl
+            });
+            throw new Error(`历史记录检查失败: ${historyResponse.status}, ${errorText}`);
+          }
+
+          const history = await historyResponse.json() as ComfyUIHistoryResponse;
+          imageFilename = this.getImageFilenameFromHistory(history, prompt_id, outputNodes);
+          
+          if (imageFilename) {
+            console.log('图片生成完成:', imageFilename);
+            break;
+          }
         }
-      }
 
-      if (!imageFilename) {
-        throw new Error('图片生成超时');
-      }
+        if (!imageFilename) {
+          throw new Error('图片生成超时');
+        }
 
-      // 5. 返回图片URL
-      const imageUrl = `${this.baseUrl}/view?filename=${imageFilename}&type=output`;
-      console.log('返回图片URL:', imageUrl);
-      return imageUrl;
+        // 5. 返回完整的图片URL
+        const imageUrl = `${this.baseUrl}/view?filename=${imageFilename}&type=output`;
+        console.log('返回图片URL:', imageUrl);
+        return imageUrl;
+      } catch (fetchError) {
+        console.error('网络请求错误:', {
+          error: fetchError,
+          message: fetchError.message,
+          url: requestUrl
+        });
+        throw fetchError;
+      }
     } catch (error) {
-      console.error('ComfyUI服务错误:', error);
+      console.error('ComfyUI服务错误:', {
+        error,
+        message: error.message,
+        baseUrl: this.baseUrl
+      });
       throw error;
     }
   }

@@ -4,7 +4,7 @@ export const AI_SERVICES = {
     MODEL: 'deepseek-r1:32b',
   },
   COMFYUI: {
-    BASE_URL: '/api/comfyui',
+    BASE_URL: 'http://10.0.1.88:8188',
   },
 } as const;
 

@@ -4,14 +4,6 @@ const nextConfig = {
   swcMinify: true,
   poweredByHeader: false,
   compress: true,
-  async rewrites() {
-    return [
-      {
-        source: '/api/comfyui/:path*',
-        destination: 'http://10.0.1.88:8188/:path*',
-      },
-    ];
-  },
   webpack: (config, { dev, isServer }) => {
     // 添加更多的编译信息
     if (dev) {
@@ -25,6 +17,14 @@ const nextConfig = {
       }
     }
     return config
+  },
+  async rewrites() {
+    return [
+      {
+        source: '/api/comfyui/:path*',
+        destination: 'http://10.0.1.88:8188/:path*',
+      },
+    ];
   },
   async headers() {
     return [
