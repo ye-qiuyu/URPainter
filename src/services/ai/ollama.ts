@@ -20,6 +20,12 @@ export class OllamaService {
 
   async chat(messages: OllamaMessage[]): Promise<string> {
     try {
+      console.log('开始请求Ollama服务:', {
+        url: `${this.baseUrl}/api/generate`,
+        model: this.model,
+        prompt: messages[messages.length - 1].content
+      });
+
       const response = await fetch(`${this.baseUrl}/api/generate`, {
         method: 'POST',
         headers: {
@@ -42,29 +48,54 @@ export class OllamaService {
       }
 
       let fullResponse = '';
+      let buffer = ''; // 用于存储不完整的JSON字符串
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         
         // 将 Uint8Array 转换为文本
         const chunk = new TextDecoder().decode(value);
-        // 处理每个JSON行
-        const lines = chunk.split('\n').filter(line => line.trim());
+        buffer += chunk;
+
+        // 尝试按行分割并处理完整的JSON
+        const lines = buffer.split('\n');
+        // 保留最后一个可能不完整的行
+        buffer = lines.pop() || '';
+
+        // 处理完整的行
         for (const line of lines) {
-          try {
-            const data = JSON.parse(line);
-            if (data.response && !data.done) {
-              fullResponse += data.response;
+          if (line.trim()) {
+            try {
+              const data = JSON.parse(line);
+              console.log('收到响应片段:', data);
+              if (data.response && !data.done) {
+                fullResponse += data.response;
+              }
+            } catch (e) {
+              console.warn('解析响应行失败:', { line, error: e });
+              // 继续处理下一行，不中断整个过程
             }
-          } catch (e) {
-            console.error('解析响应出错:', e);
           }
         }
       }
 
+      // 处理缓冲区中剩余的数据
+      if (buffer.trim()) {
+        try {
+          const data = JSON.parse(buffer);
+          if (data.response && !data.done) {
+            fullResponse += data.response;
+          }
+        } catch (e) {
+          console.warn('解析最后的缓冲区失败:', { buffer, error: e });
+        }
+      }
+
+      console.log('完成响应处理，总长度:', fullResponse.length);
       return fullResponse;
     } catch (error) {
-      console.error('Error calling Ollama:', error);
+      console.error('Ollama服务错误:', error);
       throw error;
     }
   }
