@@ -18,14 +18,18 @@ export interface OllamaResponse {
 }
 
 // ComfyUI 相关类型
-export interface ComfyUIWorkflow {
-  // 工作流JSON结构
-  [key: string]: {
-    inputs: {
-      [key: string]: any;
-    };
-    // 其他工作流相关字段
+export interface ComfyUINode {
+  inputs: {
+    [key: string]: any;
   };
+  class_type: string;
+  _meta?: {
+    title?: string;
+  };
+}
+
+export interface ComfyUIWorkflow {
+  [key: string]: ComfyUINode;
 }
 
 export interface ComfyUIPromptResponse {

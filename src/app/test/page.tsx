@@ -31,13 +31,26 @@ export default function TestPage() {
     try {
       setLoading(true);
       setError('');
-      const comfyui = ComfyUIService.getInstance();
-      const imageUrl = await comfyui.generateImage(
-        {}, // 默认工作流
-        input,
-        'test-session'
-      );
-      setImageUrl(imageUrl);
+      
+      const response = await fetch('/api/generate-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: input,
+          sessionId: 'test-session',
+          workflow: 'test'  // 使用 test.json 工作流
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || '生成图片失败');
+      }
+
+      const data = await response.json();
+      setImageUrl(data.data.imageUrl);
     } catch (err) {
       setError(err instanceof Error ? err.message : '未知错误');
     } finally {
