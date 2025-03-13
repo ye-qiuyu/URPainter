@@ -38,7 +38,7 @@ const LLMSection: React.FC<LLMSectionProps> = ({
   return (
     <div className="flex items-center h-full px-4">
       {/* AI助手头像 */}
-      <div className="flex-shrink-0">
+      <div className="flex-shrink-0 ml-4">
         <AIAssistant />
       </div>
 
@@ -51,16 +51,16 @@ const LLMSection: React.FC<LLMSectionProps> = ({
       </div>
 
       {/* 语音输入按钮 */}
-      <div className="flex-shrink-0">
+      <div className="flex-shrink-0 -ml-4">
         <button
           onMouseDown={handleVoiceStart}
           onMouseUp={handleVoiceEnd}
           onMouseLeave={handleVoiceEnd}
           onTouchStart={handleVoiceStart}
           onTouchEnd={handleVoiceEnd}
-          className="w-20 h-20 rounded-full bg-blue-500 text-white flex items-center justify-center hover:bg-blue-600 transition-colors"
+          className="w-16 h-16 rounded-full bg-blue-500 text-white flex items-center justify-center hover:bg-blue-600 transition-colors"
         >
-          <FaMicrophone size={36} />
+          <FaMicrophone size={32} />
         </button>
       </div>
     </div>
