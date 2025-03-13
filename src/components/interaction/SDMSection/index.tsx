@@ -10,27 +10,35 @@ interface SDMSectionProps {
 
 const SDMSection: React.FC<SDMSectionProps> = ({ images, loading }) => {
   return (
-    <div className="h-full flex items-center">
-      <div className="w-full max-w-3xl mx-auto">
-        <div className="grid grid-cols-3 gap-6 p-4">
+    <div className="h-full flex flex-col justify-center">
+      <div className="w-full px-4">
+        <div className="grid grid-cols-3 gap-4">
           {images.length > 0 ? (
             images.slice(0, 3).map((url, index) => (
-              <ImagePreview key={index} imageUrl={url} />
+              <div key={index} className="w-[140px] h-[140px]">
+                <ImagePreview imageUrl={url} />
+              </div>
             ))
           ) : (
             <>
-              <ImagePreview />
-              <ImagePreview />
-              <ImagePreview />
+              <div className="w-[140px] h-[140px]">
+                <ImagePreview />
+              </div>
+              <div className="w-[140px] h-[140px]">
+                <ImagePreview />
+              </div>
+              <div className="w-[140px] h-[140px]">
+                <ImagePreview />
+              </div>
             </>
           )}
         </div>
-        {loading && (
-          <div className="mt-4 text-center">
-            <span className="text-gray-500">生成中...</span>
-          </div>
-        )}
       </div>
+      {loading && (
+        <div className="mt-2 text-center">
+          <span className="text-gray-500">生成中...</span>
+        </div>
+      )}
     </div>
   );
 };
