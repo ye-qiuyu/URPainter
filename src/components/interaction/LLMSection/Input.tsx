@@ -6,10 +6,11 @@ import { BsKeyboard, BsSend } from 'react-icons/bs';
 
 interface InputProps {
   onSubmit: (message: string) => void;
+  onInputStateChange?: (isTyping: boolean) => void;
   disabled?: boolean;
 }
 
-const Input: React.FC<InputProps> = ({ onSubmit, disabled }) => {
+const Input: React.FC<InputProps> = ({ onSubmit, onInputStateChange, disabled }) => {
   const [inputValue, setInputValue] = useState('');
   const [isRecording, setIsRecording] = useState(false);
 
@@ -17,6 +18,7 @@ const Input: React.FC<InputProps> = ({ onSubmit, disabled }) => {
     if (inputValue.trim()) {
       onSubmit(inputValue.trim());
       setInputValue('');
+      onInputStateChange?.(false);
     }
   };
 
@@ -25,6 +27,11 @@ const Input: React.FC<InputProps> = ({ onSubmit, disabled }) => {
       e.preventDefault();
       handleSubmit();
     }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputValue(e.target.value);
+    onInputStateChange?.(e.target.value.length > 0);
   };
 
   const handleVoiceInput = () => {
@@ -37,8 +44,10 @@ const Input: React.FC<InputProps> = ({ onSubmit, disabled }) => {
       <input
         type="text"
         value={inputValue}
-        onChange={(e) => setInputValue(e.target.value)}
+        onChange={handleChange}
         onKeyDown={handleKeyDown}
+        onBlur={() => onInputStateChange?.(false)}
+        onFocus={() => onInputStateChange?.(inputValue.length > 0)}
         placeholder="输入内容后按回车发送"
         className="flex-1 p-2 border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:cursor-not-allowed transition-colors"
         disabled={disabled}

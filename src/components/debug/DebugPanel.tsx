@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Message } from '@/types/conversation';
 import Input from '@/components/interaction/LLMSection/Input';
 
@@ -8,9 +8,15 @@ interface DebugPanelProps {
   messages: Message[];
   loading?: boolean;
   onSendMessage: (message: string) => Promise<void>;
+  onInputStateChange?: (isTyping: boolean) => void;
 }
 
-const DebugPanel: React.FC<DebugPanelProps> = ({ messages, loading, onSendMessage }) => {
+const DebugPanel: React.FC<DebugPanelProps> = ({ 
+  messages, 
+  loading, 
+  onSendMessage,
+  onInputStateChange 
+}) => {
   return (
     <div className="w-[300px] h-full bg-white border-l border-gray-200 overflow-hidden flex flex-col">
       <div className="p-3 border-b border-gray-200 bg-gray-50">
@@ -42,7 +48,11 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ messages, loading, onSendMessag
         </div>
       </div>
       <div className="p-3 border-t border-gray-200 bg-gray-50">
-        <Input onSubmit={onSendMessage} disabled={loading} />
+        <Input 
+          onSubmit={onSendMessage} 
+          onInputStateChange={onInputStateChange}
+          disabled={loading} 
+        />
       </div>
     </div>
   );

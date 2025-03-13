@@ -17,6 +17,7 @@ export default function StudioPage() {
   const [images, setImages] = useState<string[]>([]);
   const [imageLoading, setImageLoading] = useState(false);
   const [error, setError] = useState<string>('');
+  const [isTyping, setIsTyping] = useState(false);
 
   const handleSendMessage = async (message: string) => {
     try {
@@ -70,12 +71,13 @@ export default function StudioPage() {
     <StudioLayout
       header={
         <div className="flex h-full w-full">
-          <div className="flex-1 flex flex-col h-full">
+          <div className="w-[40%] flex flex-col h-full">
             <div className="flex-1 overflow-hidden">
               <LLMSection
                 messages={messages}
                 onSendMessage={handleSendMessage}
                 loading={loading}
+                isTyping={isTyping}
               />
             </div>
           </div>
@@ -98,6 +100,7 @@ export default function StudioPage() {
             messages={messages}
             loading={loading}
             onSendMessage={handleSendMessage}
+            onInputStateChange={setIsTyping}
           />
         )
       }
