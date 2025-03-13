@@ -1,4 +1,2 @@
-export { default as VoiceInput } from './VoiceInput';
-export { default as TextInput } from './TextInput';
-export { default as AIAssistant } from './AIAssistant';
-export { default as ImagePreview } from './ImagePreview'; 
+export { default as LLMSection } from './LLMSection';
+export { default as SDMSection } from './SDMSection'; 
