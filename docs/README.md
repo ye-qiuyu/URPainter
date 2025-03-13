@@ -1,6 +1,6 @@
 # URPainter
 
-URPainter是一款面向6-9岁儿童的创意绘画教育应用，通过结合大语言模型（LLM）和稳定扩散模型（SDM），为儿童提供独特的创意绘画和科普教育体验。本说明更新了URPainter的技术实现方案，采用Mac本地Web前端与LLM、SDM服务交互，实现离线可用的创意绘画助手。
+URPainter是一款面向4-6岁儿童的创意绘画教育应用，通过结合大语言模型（LLM）和稳定扩散模型（SDM），为儿童提供独特的创意绘画和科普教育体验。本说明更新了URPainter的技术实现方案，采用Mac本地Web前端与LLM、SDM服务交互，实现离线可用的创意绘画助手。
 
 ## 目录
 
@@ -178,7 +178,7 @@ E --> F[完成绘制]
      - 如果你能够发现一件特别的东西，它是什么？
      - 你最喜欢的动物是什么？为什么？
      - 如果你能变成任何东西，你会变成什么？
-- **切换条件**：获得儿童的明确回答作为关键词
+- **切换条件**：获得儿童的明确回答作为关键词，系统存了几套预设好的领域的prompt，如果儿童回答的问题属于预设领域，则使用该预设prompt
 
 #### B. 确立主题
 - **目标**：通过对话确定创作主题
@@ -281,7 +281,7 @@ LLM: 哇，这个名字真好！《吊车摘星星》既描述了画里的吊车
 
 ## 🛠 技术架构
 
-URPainter 采用 Web 端 MVP 方案，前端基于 Next.js，后端通过 API 连接本地运行的 LLM（Ollama）和 SDM（ComfyUI），架构如下：
+URPainter 采用 Web 端 MVP 方案，前端基于 Next.js，后端通过 API 连接本地运行的 LLM（Ollama调用qwen2.5:32b）和 SDM（ComfyUI），架构如下：
 
 ```
 [ Web前端 (浏览器) ]
@@ -304,14 +304,14 @@ URPainter 采用 Web 端 MVP 方案，前端基于 Next.js，后端通过 API �
        └─ 与本地 ComfyUI (SDM) 通信（图像生成）
            - REST API 请求，例如 /prompt, /history/{id}
 前端开发
-	•	开发环境：Mac 上的Web开发环境（可使用 VSCode 等工具）
+	•	开发环境：Mac 上的VSCode
 	•	开发语言：JavaScript/TypeScript
-	•	前端框架：React、Vue 等任意现代Web框架（本项目示例采用 React）
-	•	运行平台：现代浏览器（开发调试以Chrome/Safari为主）
+	•	前端框架：React
+	•	运行平台：edge
 
 后端服务
-	•	LLM 服务（Ollama）：部署在Mac本地的Ollama LLM服务器，加载所需的大语言模型（例如 DeepSeek-R1 32B、千问-32B 等）。通过REST接口提供文本生成对话能力。
-	•	图像生成服务（ComfyUI）：部署在Mac本地的Stable Diffusion服务（ComfyUI)，加载稳定扩散模型权重（如Stable Diffusion 1.5等）。通过REST接口提供基于提示词的图像生成能力，并支持远程访问。
+	•	LLM 服务（Ollama）：部署在Mac本地的Ollama LLM服务器，加载所需的大语言模型qwen2.5:32b。通过REST接口提供文本生成对话能力。
+	•	图像生成服务（ComfyUI）：部署在Mac本地的Stable Diffusion服务（ComfyUI），加载稳定扩散模型权重Stable Diffusion 1.5。通过REST接口提供基于提示词的图像生成能力，并支持远程访问。
 	•	API 接口：前端通过HTTP请求访问后端服务的API：
 	•	Ollama 接口基础地址：http://<本地IP>:11434 （默认端口11434）
 	•	ComfyUI 接口基础地址：http://<本地IP>:8188 （默认端口8188）
@@ -319,46 +319,32 @@ URPainter 采用 Web 端 MVP 方案，前端基于 Next.js，后端通过 API �
 	**说明：**如果前端与后端部署在同一台机器上，可使用localhost作为地址；如后端在局域网内另一台Mac上，则使用其局域网IP（例如10.0.1.88）。上述端口号为默认设置，可根据需要在配置或启动命令中修改。
 
 硬件要求
-	•	开发设备：Apple Silicon Mac (建议M系列芯片以加速LLM推理)，如MacBook Pro (M3) 用于运行前端和LLM。
-	•	图像处理：高性能GPU用于Stable Diffusion推理。如果使用Apple Silicon，可以利用Apple GPU (通过MPS) 进行加速；如有支持CUDA的独立GPU（例如NVIDIA RTX 4070），也可将SDM部署在该设备上以提升生成速度。
+	•	开发设备：Apple Silicon Mac M3Pro用于运行前端; MacMini 64GB用于运行LLM以及Stable Diffusion推理。
 	•	存储空间：至少几十GB可用空间，用于存放LLM模型和SD模型文件（LLM模型可达数十GB，SD模型一般数GB）。
-	•	内存要求：根据LLM模型大小配置足够内存（例如运行30B级模型需数十GB内存）。Apple Silicon的统一内存对于加载大模型也要考虑容量。
+	•	内存要求：根据LLM模型大小配置足够内存（例如运行30B级模型需数十GB内存）。
 
 🧩 开发环境配置
 
 搭建URPainter的开发/运行环境需要配置LLM服务（Ollama）、SDM服务（ComfyUI）以及前端Web应用。请按照以下步骤安装必要的依赖和进行环境设置：
 
 LLM 环境（Ollama）
-	1.	**安装 Ollama：**在Mac上安装Ollama。本项目使用Ollama来本地部署大语言模型。可以通过Homebrew安装：
-或从官方页面下载适用于macOS的安装包进行安装。
-
-	2.	**下载 LLM 模型：**安装完成后，需要下载所需的大语言模型到本地。Ollama提供了模型管理命令
-上述命令将下载名为llama2（7B参数量）的模型。请根据项目需要下载相应模型，例如英文对话模型可使用 DeepSeek-R1-32B，中文对话模型可使用 千问-32B 等。下载过程可能较长，模型文件会保存在Ollama的模型库中。
-
-	3.	**验证安装：**模型下载完成后，运行命令ollama list查看已安装的模型列表，确认所需模型已在列。还可运行简单命令测
-该命令将在本地直接运行模型产生输出，用于验证LLM工作正常。
+	1.	**安装 Ollama：**在Mac上安装Ollama。本项目使用Ollama来本地部署大语言模型。可以通过Homebrew安装或从官方页面下载适用于macOS的安装包进行安装。
+	2.	**下载 LLM 模型：ollama run qwen2.5:32b
+	3.	**验证安装：ollama list
 
 SDM 环境（ComfyUI）
 	1.	**安装 Python 和 Git：**确保Mac上已安装Python 3.10+和Git。建议使用Python 3.10或3.11版本，并安装pip用于安装依赖。
 	2.	**获取 ComfyUI 程序：**从官方仓库获取ComfyUI。本项目使用ComfyUI作为Stable Diffusion后台，可通过git获取最新版
 	3.	**安装依赖：**进入ComfyUI目录后，安装其依赖库
-提示： 在Apple Silicon设备上，为使用GPU加速（MPS），需要安装支持MPS的PyTorch版本。可参考Apple官方指导安装最新的PyTorch nightly（支持GPU=MPS）。安装完合适的PyTorch后，再运行上述依赖安装命令。
-
 	4.	**准备模型文件：**下载Stable Diffusion模型权重文件（如v1-5-pruned-emaonly.safetensors对应Stable Diffusion 1.5）。将下载的模型文件放置到ComfyUI目录下的models/checkpoints/文件夹中。ComfyUI启动时会自动加载该目录中的模型。
-提示： 可从Hugging Face等平台获取所需的Stable Diffusion模型文件。如果使用SDXL等新模型，确保相应模型文件和配置正确放置，并可能需要相应的配置文件。
-	5.	验证安装：（可选）安装完成后，可以启动ComfyUI的图形界面进行一次手动测试。在终端运行
-不加参数启动时，ComfyUI将在本地启动一个Web界面（默认监听localhost:8188）。在浏览器中打开 http://localhost:8188 可访问ComfyUI界面。尝试加载模型并生成一张测试图片，以确认SDM环境配置正确。如果使用Apple Silicon，第一次生成可能会编译内核而稍慢，属正常现象。
+	5.	验证安装：ComfyUI将在本地启动一个Web界面（默认监听localhost:8188）。在浏览器中打开 http://localhost:8188 可访问ComfyUI界面。
 
 Web 前端环境
-	1.	**安装 Node.js：**如果前端使用了Node.js框架（如React/Vue），请确保安装了Node.js（建议版本16+）。在终端运行 node -v 验证版本。如果未安装，可从nodejs.org下载LTS版本。
+	1.	**安装 Node.js：**在终端运行 node -v 验证版本。如果未安装，可从nodejs.org下载LTS版本。
 	2.	**获取前端代码：**将URPainter前端代码克隆或下载到本地。如果前端代码与后端在同一仓库中，请定位到前端项目目录（例如frontend/或web/子目录）；如果在单独仓库，请克隆相应仓库。
-	3.	**安装前端依赖：**进入前端项目目录，运行包管理器安装依赖。例如，若使用npm
-这将根据package.json安装所需的所有前端依赖库（React、Webpack等）。
-
+	3.	**安装前端依赖：**进入前端项目目录，运行包管理器安装依赖。
 	4.	**配置前端连接：**根据后端服务地址配置前端代码中的API调用地址。通常在前端项目的配置文件或环境文件中设置后端API的基准URL。例如，将Ollama API的基址设置为http://localhost:11434，ComfyUI API的基址设置为http://localhost:8188。若前后端不在同一主机，使用实际的服务IP地址。
-注意： 在开发模式下，可能需要配置代理或启用后端服务的CORS，以允许浏览器跨域访问API。确保Ollama和ComfyUI允许来自前端的请求（见下文"连接测试"部分）。
-	5.	**构建/运行前端：**在开发环境中，可以运行开发服务器方便调试。例如React应用可执行
-该命令将在本地启动开发服务器（通常默认http://localhost:3000），自动打开浏览器访问应用。如果没有使用框架或不需要复杂构建，也可以直接打开前端的index.html进行测试（需确保后端启用了CORS，建议使用本地主机启动一个简易服务器来提供前端页面，如使用Python SimpleHTTPServer）。
+	5.	**构建/运行前端：**在开发环境中，可以运行开发服务器方便调试。例如React应用可执行该命令将在本地启动开发服务器（通常默认http://localhost:3000）。
 
 🚀 运行指南
 
@@ -393,7 +379,7 @@ curl http://localhost:11434/api/version
 这表示Ollama服务正常响应。同样，可以测试一下生成接口（确保已加载模型）：
 curl -X POST http://localhost:11434/api/generate \
      -H "Content-Type: application/json" \
-     -d '{"model": "模型名称", "prompt": "Hello"}'
+     -d '{"model": "qwen2.5:32b", "prompt": "Hello"}'
 如果模型较大，此请求可能几秒后返回一段JSON，包含模型输出文本。如果能得到合理的回复或至少"done": true的JSON结果，说明LLM服务工作正常。
 	•	测试 SDM API: 使用curl调用ComfyUI的队列接口以测试连通：
 curl http://localhost:8188/queue
@@ -432,7 +418,7 @@ Ollama 的服务接口前缀为http://<ollama_host>:11434/api/。常用的API包
 {
   "response": "太空探索使人类得以了解宇宙的奥秘...",
   "done": true,
-  "model": "llama2:7b",
+  "model": "qwen2.5:32b",
   "total_duration": 1234567890
 }
 其中response字段即模型生成的文本。done: true表示已完成，total_duration为耗时纳秒。流式模式下，前几条消息done为false，最后一条为true。
@@ -463,7 +449,7 @@ Ollama 的服务接口前缀为http://<ollama_host>:11434/api/。常用的API包
 import requests
 url = "http://localhost:11434/api/generate"
 payload = {
-    "model": "llama2:7b",
+    "model": "qwen2.5:32b",
     "prompt": "请问太阳为什么是热的？",
     "stream": False
 }
@@ -566,7 +552,7 @@ SDM_API_URL = "http://localhost:8188"                    # ComfyUI SDM服务接�
 # 1. 调用 LLM 接口，获取绘画主题创意
 llm_prompt = "请给出一个有趣的绘画主题，适合6-9岁儿童。"
 llm_payload = {
-    "model": "llama2:7b",   # 使用的模型名称，请根据实际已加载模型替换
+    "model": "qwen2.5:32b",   # 使用的模型名称，请根据实际已加载模型替换
     "prompt": llm_prompt,
     "stream": False
 }
@@ -639,7 +625,7 @@ else:
 前端方案选择：React/Next.js 架构
 
 选择 Next.js + React 是合理的。Next.js 基于 React，支持服务端渲染和前后端集成，非常适合快速构建 Web MVP。使用 Next.js 可以同时构建前端页面和后端 API 接口，方便在一个项目内协调 LLM 和 SDM 调用。具体方案：
-	•	项目初始化：使用 create-next-app 创建项目，并启用 TypeScript 方便提高可靠性。Next.js 提供的文件结构（如pages/或app/目录）可快速搭建路由和页面结构 ￼。
+	•	项目初始化：使用 create-next-app 创建项目，并启用 TypeScript 方便提高可靠性。Next.js 提供的文件结构（如pages/或app/目录）可快速搭建路由和页面结构 。
 	•	前端架构：采用 React 组件构建对话界面和绘画展示界面。例如，一个对话组件用于显示用户和 AI 的对话记录，一个画布/图片组件用于展示 SDM 生成的图像。使用状态管理（如 React Context 或 Redux）在组件之间共享当前会话数据（包括消息列表和生成的图像等）。界面设计遵循儿童友好原则，保证交互简洁直观。
 	•	UI框架与样式：为提高开发效率，可以引入现成的 UI 组件库（如 Ant Design, Material-UI）或使用 Tailwind CSS 等快速定制样式。确保界面元素（按钮、对话气泡、图片展示等）清晰易用，并提供即时反馈（例如在生成图像时显示加载动画）。
 	•	前端与后端交互：Next.js 允许在pages/api/下编写后端接口。例如创建/api/chat和/api/generateImage等路由供前端调用。前端通过fetch或 Axios 调用这些 API，将用户输入发送给后端，接收LLM回复和图像结果。在 Next.js 中，这些 API 路由运行在 Node.js 环境，可方便地调用本地服务（Ollama 和 ComfyUI）的接口。这样前端无需直接访问 Mac mini 上的服务接口，有利于跨域和安全控制。
@@ -771,29 +757,33 @@ ComfyUI 与 LLM 的联动机制
 开发会话历史记录功能
 实现作品保存和查看功能
 
+技术实践总结
+在API通信层实现阶段，我们通过测试获得了以下关键经验和技术决策：
 
+1. API通信架构设计
+   - 采用直接调用外部服务的方式，避免不必要的代理层
+   - 使用Next.js API Routes作为中间层，处理请求和响应转换
+   - 在services目录下实现独立的服务类，采用单例模式确保资源有效利用
 
-从技术角度，我建议按以下顺序实现功能：
-基础项目搭建：
-创建Next.js项目
-配置基本路由
-设置基本页面布局
-核心通信功能：
-实现与Ollama的基本通信（文本对话）
-实现与ComfyUI的基本通信（图像生成）
-创建简单的对话界面测试LLM连接
-基本对话流程：
-实现简单的对话状态管理
-创建基本的对话界面
-实现用户输入和AI回复的显示
-图像生成与显示：
-实现基于对话内容的关键词提取
-调用ComfyUI生成图像
-在界面中显示生成的图像
-会话管理：
-实现基本的会话存储
-添加历史记录查看功能
+2. 错误处理和日志规范
+   - 实现统一的日志前缀和格式化输出
+   - 在服务类中实现详细的错误处理和日志记录
+   - 利用Next.js的日志配置系统控制开发环境的日志输出级别
 
+3. 工作流管理机制
+   - ComfyUI工作流配置采用JSON文件形式存储
+   - 实现工作流的动态加载和解析功能
+   - 支持工作流节点的智能分析和参数动态注入
+
+4. 开发环境优化
+   - 配置最小化的webpack构建日志，提升开发体验
+   - 实现完整的跨域资源共享（CORS）配置
+   - 优化开发服务器配置，提供更好的调试信息
+
+5. 测试策略实践
+   - 创建独立的测试页面进行功能验证
+   - 分离LLM和SDM的测试流程，便于独立调试
+   - 实现基础的用户界面反馈机制
 
 整体架构类比：
 
