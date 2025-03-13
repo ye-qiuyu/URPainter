@@ -6,6 +6,7 @@ import StudioLayout from '@/components/layout/StudioLayout';
 import { LLMSection, SDMSection } from '@/components/interaction';
 import { ToolBar } from '@/components/ui';
 import { Message } from '@/types/conversation';
+import DebugPanel from '@/components/debug/DebugPanel';
 
 // 动态导入画布组件以避免SSR问题
 const Canvas = dynamic(() => import('@/components/canvas/Canvas'), { ssr: false });
@@ -15,18 +16,51 @@ export default function StudioPage() {
   const [loading, setLoading] = useState(false);
   const [images, setImages] = useState<string[]>([]);
   const [imageLoading, setImageLoading] = useState(false);
+  const [error, setError] = useState<string>('');
 
   const handleSendMessage = async (message: string) => {
-    setLoading(true);
     try {
-      // TODO: 实现发送消息的逻辑
-      const newMessage: Message = {
+      setLoading(true);
+      setError('');
+
+      // 添加用户消息到对话列表
+      const userMessage: Message = {
         id: Date.now().toString(),
         role: 'user',
         content: message,
         timestamp: Date.now(),
       };
-      setMessages(prev => [...prev, newMessage]);
+      setMessages(prev => [...prev, userMessage]);
+
+      // 发送请求到API
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || '对话请求失败');
+      }
+
+      // 处理API响应
+      const data = await response.json();
+      const aiMessage = data.data.messages[data.data.messages.length - 1];
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: aiMessage.content,
+        timestamp: Date.now(),
+      }]);
+
+      // TODO: 根据AI响应决定是否需要生成图片
+      
+    } catch (err) {
+      console.error('对话过程中发生错误:', err);
+      setError(err instanceof Error ? err.message : '未知错误');
     } finally {
       setLoading(false);
     }
@@ -58,6 +92,15 @@ export default function StudioPage() {
       }
       sidebar={<ToolBar />}
       main={<Canvas />}
+      debugPanel={
+        process.env.NODE_ENV === 'development' && (
+          <DebugPanel
+            messages={messages}
+            loading={loading}
+            onSendMessage={handleSendMessage}
+          />
+        )
+      }
     />
   );
 } 
