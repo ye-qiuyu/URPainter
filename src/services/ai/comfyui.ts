@@ -16,7 +16,7 @@ export class ComfyUIService {
   private baseUrl: string;
 
   private constructor() {
-    this.baseUrl = AI_SERVICES.COMFYUI.BASE_URL;
+    this.baseUrl = process.env.NEXT_PUBLIC_COMFYUI_API_URL || 'http://localhost:8188';
     log('服务初始化', { baseUrl: this.baseUrl });
   }
 
@@ -175,127 +175,144 @@ export class ComfyUIService {
     return null;
   }
 
-  async generateImage(
-    workflow: ComfyUIWorkflow,
-    prompt: string,
-    sessionId: string
-  ): Promise<string> {
+  async generateImage(prompt: string, negativePrompt: string = ''): Promise<string> {
     try {
-      log('开始生成图片请求', {
-        baseUrl: this.baseUrl,
-        promptLength: prompt.length,
-        sessionId,
-        workflowNodeCount: Object.keys(workflow).length
+      // 构建ComfyUI工作流
+      const workflow = this.buildWorkflow(prompt, negativePrompt);
+      
+      // 发送请求
+      const response = await fetch(`${this.baseUrl}/prompt`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(workflow),
       });
       
-      // 1. 分析工作流结构
-      const outputNodes = this.findOutputNodes(workflow);
-      const { positiveNode, allTextNodes } = this.findTextNodes(workflow);
-
-      if (!positiveNode) {
-        throw new Error('未找到正面提示词节点');
+      if (!response.ok) {
+        throw new Error(`ComfyUI API 请求失败: ${response.status}`);
       }
-
-      // 2. 构建请求体
-      const updatedWorkflow = { ...workflow };
-      if (updatedWorkflow[positiveNode]?.inputs) {
-        updatedWorkflow[positiveNode] = {
-          ...updatedWorkflow[positiveNode],
-          inputs: {
-            ...updatedWorkflow[positiveNode].inputs,
-            text: prompt
+      
+      const data = await response.json();
+      const promptId = data.prompt_id;
+      
+      // 等待图像生成完成
+      const imageUrl = await this.waitForImage(promptId);
+      return imageUrl;
+    } catch (error) {
+      console.error('ComfyUI 服务调用失败:', error);
+      return '';
+    }
+  }
+  
+  // 等待图像生成完成
+  private async waitForImage(promptId: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      // 创建WebSocket连接
+      const ws = new WebSocket(`${this.baseUrl.replace('http', 'ws')}/ws`);
+      let imageUrl = '';
+      
+      ws.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        
+        // 检查是否是我们的promptId的执行结果
+        if (message.type === 'executed' && message.data.prompt_id === promptId) {
+          // 查找输出节点的图像
+          const outputs = message.data.output;
+          for (const nodeId in outputs) {
+            const nodeOutput = outputs[nodeId];
+            if (nodeOutput.images && nodeOutput.images.length > 0) {
+              const image = nodeOutput.images[0];
+              imageUrl = `${this.baseUrl}/view?filename=${image.filename}&subfolder=${image.subfolder || ''}`;
+              break;
+            }
           }
-        };
-      }
-
-      // 3. 直接调用 ComfyUI 服务
-      const requestUrl = `${this.baseUrl}/prompt`;
-      const requestBody = {
-        prompt: updatedWorkflow,
-        client_id: sessionId,
+        }
+        
+        // 检查是否执行完成
+        if (message.type === 'execution_complete' && message.data.prompt_id === promptId) {
+          ws.close();
+          if (imageUrl) {
+            resolve(imageUrl);
+          } else {
+            reject(new Error('未找到生成的图像'));
+          }
+        }
       };
       
-      log('准备发送请求到 ComfyUI', {
-        url: requestUrl,
-        method: 'POST',
-        bodySize: JSON.stringify(requestBody).length,
-        baseUrl: this.baseUrl
-      });
-
-      try {
-        const promptResponse = await fetch(requestUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(requestBody),
-        });
-
-        if (!promptResponse.ok) {
-          const errorText = await promptResponse.text();
-          log('请求失败', {
-            status: promptResponse.status,
-            statusText: promptResponse.statusText,
-            error: errorText,
-            url: requestUrl
-          });
-          throw new Error(`ComfyUI请求失败: ${promptResponse.status}, ${errorText}`);
-        }
-
-        const responseData = await promptResponse.json();
-        log('响应成功', responseData);
-        
-        const { prompt_id } = responseData as ComfyUIPromptResponse;
-        log('获取到prompt_id', { prompt_id });
-
-        // 4. 轮询检查任务状态
-        let imageFilename: string | null = null;
-        let attempts = 0;
-        const maxAttempts = 60;
-
-        while (!imageFilename && attempts < maxAttempts) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          attempts++;
-
-          const historyUrl = `${this.baseUrl}/history/${prompt_id}`;
-          log(`检查生成状态 [${attempts}/${maxAttempts}]:`, historyUrl);
-          
-          const historyResponse = await fetch(historyUrl);
-          
-          if (!historyResponse.ok) {
-            const errorText = await historyResponse.text();
-            log('历史记录检查失败', {
-              status: historyResponse.status,
-              error: errorText,
-              url: historyUrl
-            });
-            throw new Error(`历史记录检查失败: ${historyResponse.status}, ${errorText}`);
-          }
-
-          const history = await historyResponse.json() as ComfyUIHistoryResponse;
-          imageFilename = this.getImageFilenameFromHistory(history, prompt_id, outputNodes);
-          
-          if (imageFilename) {
-            log('图片生成完成', { imageFilename });
-            break;
-          }
-        }
-
-        if (!imageFilename) {
-          throw new Error('图片生成超时');
-        }
-
-        // 5. 返回完整的图片URL
-        const imageUrl = `${this.baseUrl}/view?filename=${imageFilename}&type=output`;
-        log('返回图片URL', { imageUrl });
-        return imageUrl;
-      } catch (error) {
-        log('请求异常', { error });
-        throw error;
+      ws.onerror = (error) => {
+        reject(error);
+      };
+      
+      // 设置超时
+      setTimeout(() => {
+        ws.close();
+        reject(new Error('图像生成超时'));
+      }, 60000); // 60秒超时
+    });
+  }
+  
+  // 构建ComfyUI工作流
+  private buildWorkflow(prompt: string, negativePrompt: string): any {
+    // 这里是一个简化的工作流，实际应用中可能需要更复杂的配置
+    return {
+      "3": {
+        "inputs": {
+          "seed": Math.floor(Math.random() * 1000000),
+          "steps": 20,
+          "cfg": 7,
+          "sampler_name": "euler_ancestral",
+          "scheduler": "normal",
+          "denoise": 1,
+          "model": ["4", 0],
+          "positive": ["6", 0],
+          "negative": ["7", 0],
+          "latent_image": ["5", 0]
+        },
+        "class_type": "KSampler"
+      },
+      "4": {
+        "inputs": {
+          "ckpt_name": "dreamshaper_8.safetensors"
+        },
+        "class_type": "CheckpointLoaderSimple"
+      },
+      "5": {
+        "inputs": {
+          "width": 512,
+          "height": 512,
+          "batch_size": 1
+        },
+        "class_type": "EmptyLatentImage"
+      },
+      "6": {
+        "inputs": {
+          "text": prompt,
+          "clip": ["4", 1]
+        },
+        "class_type": "CLIPTextEncode"
+      },
+      "7": {
+        "inputs": {
+          "text": negativePrompt,
+          "clip": ["4", 1]
+        },
+        "class_type": "CLIPTextEncode"
+      },
+      "8": {
+        "inputs": {
+          "samples": ["3", 0],
+          "vae": ["4", 2]
+        },
+        "class_type": "VAEDecode"
+      },
+      "9": {
+        "inputs": {
+          "filename_prefix": "URPainter",
+          "images": ["8", 0]
+        },
+        "class_type": "SaveImage"
       }
-    } catch (error) {
-      log('生成图片失败', { error });
-      throw error;
-    }
+    };
   }
 } 
