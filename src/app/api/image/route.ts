@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     const negativePrompt = '低质量, 模糊, 变形, 不自然, 文字, 水印, 签名, 不适合儿童的内容';
     
     // 调用图像生成服务
-    const imageUrl = await comfyUIService.generateImage(prompt, negativePrompt);
+    const imageUrl = await comfyUIService.generateImage(prompt, negativePrompt, conversationId);
     
     if (!imageUrl) {
       return NextResponse.json(

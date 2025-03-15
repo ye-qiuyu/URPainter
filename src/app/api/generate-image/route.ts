@@ -85,11 +85,32 @@ export async function POST(request: Request) {
     const comfyui = ComfyUIService.getInstance();
     
     console.log('开始生成图片...');
-    const imageUrl = await comfyui.generateImage(
-      workflowConfig,
-      prompt,
-      sessionId || 'default-session'
-    );
+    // 修改工作流中的提示词
+    if (workflowConfig && workflowConfig['6'] && workflowConfig['6'].inputs) {
+      console.log('修改工作流中的提示词', { 
+        原提示词: workflowConfig['6'].inputs.text,
+        新提示词: prompt 
+      });
+      workflowConfig['6'].inputs.text = prompt;
+    }
+    
+    // 设置超时
+    const timeoutPromise = new Promise<string>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error('图像生成请求超时'));
+      }, 30000); // 30秒超时
+    });
+    
+    // 使用Promise.race确保请求不会无限等待
+    const imageUrl = await Promise.race([
+      comfyui.generateImage(
+        workflowConfig,
+        '', // 不使用negativePrompt参数，因为已经在工作流中设置了
+        sessionId || 'default-session'
+      ),
+      timeoutPromise
+    ]);
+    
     console.log('图片生成成功:', imageUrl);
 
     return NextResponse.json({

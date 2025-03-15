@@ -175,29 +175,51 @@ export class ComfyUIService {
     return null;
   }
 
-  async generateImage(prompt: string, negativePrompt: string = ''): Promise<string> {
+  async generateImage(prompt: string | any, negativePrompt: string = '', sessionId: string = 'default-session'): Promise<string> {
     try {
-      // 构建ComfyUI工作流
-      const workflow = this.buildWorkflow(prompt, negativePrompt);
+      log('开始生成图像', { prompt, negativePrompt, sessionId, baseUrl: this.baseUrl });
+      
+      // 如果prompt是工作流配置，直接使用
+      let workflow;
+      if (typeof prompt === 'object' && !Array.isArray(prompt) && prompt !== null && Object.keys(prompt).length > 0 && 
+          Object.values(prompt).some(node => typeof node === 'object' && node !== null && 'class_type' in node)) {
+        log('检测到prompt是工作流配置，直接使用');
+        workflow = prompt;
+      } else {
+        // 否则构建工作流
+        log('构建新的工作流');
+        workflow = this.buildWorkflow(prompt, negativePrompt);
+      }
+      log('使用的工作流', workflow);
       
       // 发送请求
+      log('发送请求到ComfyUI', { url: `${this.baseUrl}/prompt` });
       const response = await fetch(`${this.baseUrl}/prompt`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(workflow),
+        body: JSON.stringify({ prompt: workflow }), // 注意这里需要包装在prompt字段中
       });
       
       if (!response.ok) {
-        throw new Error(`ComfyUI API 请求失败: ${response.status}`);
+        const errorText = await response.text();
+        log('ComfyUI请求失败', { status: response.status, error: errorText });
+        throw new Error(`ComfyUI API 请求失败: ${response.status}, ${errorText}`);
       }
       
       const data = await response.json();
+      log('ComfyUI响应', data);
       const promptId = data.prompt_id;
       
+      if (!promptId) {
+        throw new Error('ComfyUI响应中没有prompt_id');
+      }
+      
       // 等待图像生成完成
+      log('等待图像生成完成', { promptId });
       const imageUrl = await this.waitForImage(promptId);
+      log('图像生成完成', { imageUrl });
       return imageUrl;
     } catch (error) {
       console.error('ComfyUI 服务调用失败:', error);
@@ -208,52 +230,228 @@ export class ComfyUIService {
   // 等待图像生成完成
   private async waitForImage(promptId: string): Promise<string> {
     return new Promise((resolve, reject) => {
+      log('创建WebSocket连接', { wsUrl: `${this.baseUrl.replace('http', 'ws')}/ws` });
+      
       // 创建WebSocket连接
       const ws = new WebSocket(`${this.baseUrl.replace('http', 'ws')}/ws`);
       let imageUrl = '';
+      let lastProgress = 0;
+      let progressStableCount = 0;
+      let lastCheckTime = Date.now();
+      const checkInterval = 2000; // 每2秒检查一次历史记录
+      let progressReached100 = false;
+      let progressReached100Time = 0;
       
-      ws.onmessage = (event) => {
-        const message = JSON.parse(event.data);
-        
-        // 检查是否是我们的promptId的执行结果
-        if (message.type === 'executed' && message.data.prompt_id === promptId) {
-          // 查找输出节点的图像
-          const outputs = message.data.output;
-          for (const nodeId in outputs) {
-            const nodeOutput = outputs[nodeId];
-            if (nodeOutput.images && nodeOutput.images.length > 0) {
-              const image = nodeOutput.images[0];
-              imageUrl = `${this.baseUrl}/view?filename=${image.filename}&subfolder=${image.subfolder || ''}`;
-              break;
+      // 定期检查历史记录的函数
+      const checkHistory = async () => {
+        const now = Date.now();
+        // 如果进度已经达到100%，或者距离上次检查已经过了checkInterval时间
+        if (progressReached100 || now - lastCheckTime >= checkInterval) {
+          lastCheckTime = now;
+          log('检查历史记录...');
+          
+          try {
+            const response = await fetch(`${this.baseUrl}/history/${promptId}`);
+            const history = await response.json();
+            log('获取历史记录成功', { history: JSON.stringify(history).substring(0, 200) });
+            
+            // 查找输出节点的图像
+            if (history && history[promptId] && history[promptId].outputs) {
+              for (const nodeId in history[promptId].outputs) {
+                const nodeOutput = history[promptId].outputs[nodeId];
+                if (nodeOutput.images && nodeOutput.images.length > 0) {
+                  const image = nodeOutput.images[0];
+                  imageUrl = `${this.baseUrl}/view?filename=${image.filename}&subfolder=${image.subfolder || ''}`;
+                  log('从历史记录中找到图像URL', { imageUrl });
+                  
+                  ws.close();
+                  resolve(imageUrl);
+                  return true;
+                }
+              }
             }
+            
+            // 如果进度已经达到100%，并且已经等待了一段时间，但仍然没有找到图像，则再等待一段时间后再次检查
+            if (progressReached100) {
+              const waitTime = now - progressReached100Time;
+              log('进度已达到100%，但未找到图像', { waitTime });
+              
+              // 如果等待时间超过5秒，则认为图像生成已完成，但没有找到图像
+              if (waitTime > 5000) {
+                log('等待超过5秒仍未找到图像，结束等待');
+                ws.close();
+                reject(new Error('未找到生成的图像'));
+                return true;
+              }
+            }
+            
+            log('历史记录中未找到图像');
+            return false;
+          } catch (error) {
+            log('获取历史记录失败', { error });
+            return false;
           }
         }
-        
-        // 检查是否执行完成
-        if (message.type === 'execution_complete' && message.data.prompt_id === promptId) {
-          ws.close();
-          if (imageUrl) {
-            resolve(imageUrl);
-          } else {
-            reject(new Error('未找到生成的图像'));
+        return false;
+      };
+      
+      ws.onopen = () => {
+        log('WebSocket连接已打开');
+      };
+      
+      ws.onmessage = async (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          log('收到WebSocket消息', { 
+            type: message.type, 
+            promptId: message.data?.prompt_id,
+            data: message.data ? JSON.stringify(message.data).substring(0, 200) : null
+          });
+          
+          // 检查是否是进度消息
+          if (message.type === 'progress' && message.data && message.data.prompt_id === promptId) {
+            const progress = message.data.value || 0;
+            const max = message.data.max || 1;
+            const percentage = Math.round((progress / max) * 100);
+            
+            log('图像生成进度', { progress, max, percentage, lastProgress });
+            
+            // 检查进度是否已经达到100%
+            if (percentage === 100 && !progressReached100) {
+              progressReached100 = true;
+              progressReached100Time = Date.now();
+              log('进度达到100%，开始检查历史记录');
+              
+              // 进度达到100%时立即检查历史记录
+              const found = await checkHistory();
+              if (found) return;
+              
+              // 如果没有找到图像，设置一个定时器，每秒检查一次历史记录
+              const checkInterval = setInterval(async () => {
+                const found = await checkHistory();
+                if (found) {
+                  clearInterval(checkInterval);
+                }
+              }, 1000);
+              
+              // 5秒后如果仍然没有找到图像，清除定时器
+              setTimeout(() => {
+                clearInterval(checkInterval);
+              }, 5000);
+            }
+            
+            // 检测进度是否停滞（连续多次相同进度）
+            if (percentage === lastProgress) {
+              progressStableCount++;
+              log('进度停滞检测', { progressStableCount, percentage });
+              
+              // 如果进度停滞，检查历史记录
+              if (progressStableCount >= 3) {
+                await checkHistory();
+              }
+            } else {
+              lastProgress = percentage;
+              progressStableCount = 0;
+            }
+            
+            // 每收到进度消息也定期检查历史记录
+            await checkHistory();
           }
+          
+          // 检查是否是我们的promptId的执行结果
+          if (message.type === 'executed' && message.data && message.data.prompt_id === promptId) {
+            log('收到执行结果', { outputs: JSON.stringify(message.data.output).substring(0, 200) });
+            
+            // 查找输出节点的图像
+            const outputs = message.data.output;
+            for (const nodeId in outputs) {
+              const nodeOutput = outputs[nodeId];
+              if (nodeOutput.images && nodeOutput.images.length > 0) {
+                const image = nodeOutput.images[0];
+                imageUrl = `${this.baseUrl}/view?filename=${image.filename}&subfolder=${image.subfolder || ''}`;
+                log('找到图像URL', { imageUrl });
+                break;
+              }
+            }
+            
+            // 如果在执行结果中找到了图像URL，立即返回
+            if (imageUrl) {
+              ws.close();
+              resolve(imageUrl);
+              return;
+            }
+            
+            // 否则检查历史记录
+            await checkHistory();
+          }
+          
+          // 检查是否执行完成
+          if (message.type === 'execution_complete' && message.data && message.data.prompt_id === promptId) {
+            log('执行完成', { hasImageUrl: !!imageUrl });
+            ws.close();
+            if (imageUrl) {
+              resolve(imageUrl);
+            } else {
+              // 如果没有找到图像URL，尝试从历史记录中获取
+              const found = await checkHistory();
+              if (!found) {
+                reject(new Error('未找到生成的图像'));
+              }
+            }
+          }
+        } catch (error) {
+          log('解析WebSocket消息失败', { error, data: event.data });
         }
       };
       
       ws.onerror = (error) => {
+        log('WebSocket错误', { error });
         reject(error);
       };
       
+      ws.onclose = () => {
+        log('WebSocket连接已关闭');
+      };
+      
       // 设置超时
-      setTimeout(() => {
-        ws.close();
-        reject(new Error('图像生成超时'));
-      }, 60000); // 60秒超时
+      setTimeout(async () => {
+        log('图像生成超时');
+        
+        // 在超时前尝试从历史记录中获取图像
+        const found = await checkHistory();
+        if (!found) {
+          ws.close();
+          reject(new Error('图像生成超时'));
+        }
+      }, 30000); // 减少到30秒超时
     });
   }
   
   // 构建ComfyUI工作流
-  private buildWorkflow(prompt: string, negativePrompt: string): any {
+  private buildWorkflow(prompt: string | any, negativePrompt: string): any {
+    // 使用服务器上可用的模型名称
+    const modelName = "v1-5-pruned-emaonly-fp16.safetensors"; // 根据服务器上可用的模型
+    
+    // 确保prompt是字符串
+    if (typeof prompt === 'object') {
+      log('警告: prompt是对象，尝试提取正确的提示词', { prompt });
+      
+      // 如果prompt是一个包含工作流的对象，尝试从中提取正面提示词
+      if (prompt && typeof prompt === 'object' && 
+          prompt['6'] && typeof prompt['6'] === 'object' && 
+          prompt['6'].inputs && typeof prompt['6'].inputs === 'object' && 
+          prompt['6'].inputs.text) {
+        prompt = String(prompt['6'].inputs.text);
+        log('从工作流对象中提取的提示词', { extractedPrompt: prompt });
+      } else {
+        // 如果无法提取，使用默认提示词
+        prompt = "a beautiful landscape";
+        log('无法从对象中提取提示词，使用默认值', { defaultPrompt: prompt });
+      }
+    }
+    
+    log('构建工作流', { prompt, negativePrompt, modelName });
+    
     // 这里是一个简化的工作流，实际应用中可能需要更复杂的配置
     return {
       "3": {
@@ -261,7 +459,7 @@ export class ComfyUIService {
           "seed": Math.floor(Math.random() * 1000000),
           "steps": 20,
           "cfg": 7,
-          "sampler_name": "euler_ancestral",
+          "sampler_name": "euler",  // 使用服务器支持的采样器
           "scheduler": "normal",
           "denoise": 1,
           "model": ["4", 0],
@@ -273,7 +471,7 @@ export class ComfyUIService {
       },
       "4": {
         "inputs": {
-          "ckpt_name": "dreamshaper_8.safetensors"
+          "ckpt_name": modelName
         },
         "class_type": "CheckpointLoaderSimple"
       },
@@ -287,14 +485,14 @@ export class ComfyUIService {
       },
       "6": {
         "inputs": {
-          "text": prompt,
+          "text": prompt, // 确保这里是字符串
           "clip": ["4", 1]
         },
         "class_type": "CLIPTextEncode"
       },
       "7": {
         "inputs": {
-          "text": negativePrompt,
+          "text": negativePrompt, // 确保这里是字符串
           "clip": ["4", 1]
         },
         "class_type": "CLIPTextEncode"

@@ -46,8 +46,10 @@ export default function TestPage() {
     try {
       setLoading(true);
       setError('');
+      setImageUrl('');
       
       console.log('开始发送图片生成请求...');
+      const startTime = Date.now();
       const response = await fetch('/api/generate-image', {
         method: 'POST',
         headers: {
@@ -59,15 +61,33 @@ export default function TestPage() {
           workflow: 'test'
         }),
       });
-
+      const endTime = Date.now();
+      console.log(`请求耗时: ${endTime - startTime}ms`);
+      console.log('收到响应状态:', response.status);
+      
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || '生成图片失败');
+        const errorText = await response.text();
+        console.error('请求失败:', errorText);
+        try {
+          const errorData = JSON.parse(errorText);
+          throw new Error(errorData.error || '生成图片失败');
+        } catch (e) {
+          throw new Error(`生成图片失败: ${response.status} ${errorText.substring(0, 100)}`);
+        }
       }
 
       const data = await response.json();
       console.log('收到服务器响应:', data);
-      setImageUrl(data.data.imageUrl);
+      
+      if (data.success && data.data && data.data.imageUrl) {
+        console.log('设置图片URL:', data.data.imageUrl);
+        // 添加时间戳防止缓存
+        const imageUrlWithTimestamp = `${data.data.imageUrl}${data.data.imageUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
+        setImageUrl(imageUrlWithTimestamp);
+      } else {
+        console.error('响应中没有有效的图片URL:', data);
+        throw new Error('服务器返回的数据中没有图片URL');
+      }
     } catch (err) {
       console.error('请求过程中发生错误:', err);
       setError(err instanceof Error ? err.message : '未知错误');
