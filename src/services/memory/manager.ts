@@ -78,4 +78,14 @@ export class MemoryManager {
       this.updateCreativeElements(conversationId, extractedElements);
     }
   }
+  
+  // 获取会话ID对应的所有对话ID
+  getConversationIds(sessionId: string): string[] {
+    return this.storage.getConversationIds(sessionId);
+  }
+  
+  // 删除对话
+  deleteConversation(conversationId: string): boolean {
+    return this.storage.deleteConversation(conversationId);
+  }
 } 

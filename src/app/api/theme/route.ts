@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ThemeManager } from '@/services/themes/manager';
 import { ThemeDetector } from '@/services/themes/detector';
 import { ConversationManager } from '@/services/conversation/manager';
+import { MemoryManager } from '@/services/memory/manager';
 import { ThemeCategory, ConversationStage } from '@/types/conversation';
 
 export async function POST(req: NextRequest) {
   try {
     // 解析请求
     const { conversationId, action, theme, messages } = await req.json();
+    console.log('收到主题管理请求:', { conversationId, action, theme });
     
     if (!conversationId) {
       return NextResponse.json(
@@ -20,6 +22,7 @@ export async function POST(req: NextRequest) {
     const themeManager = ThemeManager.getInstance();
     const themeDetector = new ThemeDetector();
     const conversationManager = ConversationManager.getInstance();
+    const memoryManager = MemoryManager.getInstance();
     
     // 根据操作类型处理
     switch (action) {
@@ -33,6 +36,7 @@ export async function POST(req: NextRequest) {
         
         // 检测主题
         const detectedTheme = await themeDetector.detectTheme(messages);
+        console.log(`主题检测结果: ${detectedTheme} - 会话ID: ${conversationId}`);
         
         return NextResponse.json({ 
           theme: detectedTheme,
@@ -62,20 +66,38 @@ export async function POST(req: NextRequest) {
           );
         }
         
-        // 这里应该从数据库获取对话，这里简化处理
-        const mockConversation = {
-          id: conversationId,
-          messages: [],
-          currentStage: 'A' as ConversationStage,
-          createdAt: Date.now(),
-          updatedAt: Date.now()
-        };
+        // 从MemoryManager获取会话信息
+        const messages = memoryManager.getMessages(conversationId);
+        
+        // 构建会话对象
+        let conversation;
+        if (messages && messages.length > 0) {
+          conversation = {
+            id: conversationId,
+            messages: messages,
+            currentStage: 'A' as ConversationStage, // 默认阶段，可以根据实际情况调整
+            createdAt: messages[0].timestamp,
+            updatedAt: Date.now()
+          };
+          console.log(`找到会话: ${conversationId}, 消息数量: ${messages.length}`);
+        } else {
+          // 如果没有消息历史，创建一个基本会话对象
+          conversation = {
+            id: conversationId,
+            messages: [],
+            currentStage: 'A' as ConversationStage,
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+          };
+          console.log(`未找到会话消息: ${conversationId}, 创建基本会话对象`);
+        }
         
         // 设置主题
         const updatedConversation = conversationManager.setConversationTheme(
-          mockConversation, 
+          conversation, 
           theme as ThemeCategory
         );
+        console.log(`主题已更新: ${theme} - 会话ID: ${conversationId}`);
         
         return NextResponse.json({ 
           success: true, 

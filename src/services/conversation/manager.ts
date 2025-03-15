@@ -8,23 +8,23 @@ import {
 import { MemoryManager } from '../memory/manager';
 import { StageManager } from '../stages/manager';
 import { ThemeManager } from '../themes/manager';
-import { OllamaService } from '../ai/ollama';
-import { ComfyUIService } from '../ai/comfyui';
+import { ThemeDetector } from '../themes/detector';
+import { AITextService } from '../ai/aiTextService';
 
 export class ConversationManager {
   private static instance: ConversationManager;
   private memoryManager: MemoryManager;
   private stageManager: StageManager;
   private themeManager: ThemeManager;
-  private ollamaService: OllamaService;
-  private comfyuiService: ComfyUIService;
+  private themeDetector: ThemeDetector;
+  private aiTextService: AITextService;
   
   private constructor() {
     this.memoryManager = MemoryManager.getInstance();
     this.stageManager = StageManager.getInstance();
     this.themeManager = ThemeManager.getInstance();
-    this.ollamaService = OllamaService.getInstance();
-    this.comfyuiService = ComfyUIService.getInstance();
+    this.themeDetector = new ThemeDetector();
+    this.aiTextService = AITextService.getInstance();
   }
   
   public static getInstance(): ConversationManager {
@@ -34,21 +34,18 @@ export class ConversationManager {
     return ConversationManager.instance;
   }
   
-  // 创建新对话
+  // 创建新会话
   createConversation(): Conversation {
-    const now = Date.now();
-    const conversation: Conversation = {
+    return {
       id: uuidv4(),
       messages: [],
-      currentStage: 'A', // 初始阶段
-      createdAt: now,
-      updatedAt: now
+      currentStage: 'A',
+      createdAt: Date.now(),
+      updatedAt: Date.now()
     };
-    
-    return conversation;
   }
   
-  // 添加消息到对话
+  // 添加消息到会话
   async addMessage(
     conversation: Conversation, 
     content: string, 
@@ -63,116 +60,151 @@ export class ConversationManager {
       images
     };
     
-    // 更新对话
-    const updatedConversation: Conversation = {
-      ...conversation,
-      messages: [...conversation.messages, message],
-      updatedAt: Date.now()
-    };
+    conversation.messages.push(message);
+    conversation.updatedAt = Date.now();
     
-    // 添加到记忆管理器
+    // 存储消息到MemoryManager
     this.memoryManager.addMessage(message, conversation.id);
     
-    // 如果是AI消息，检查是否需要更新阶段
-    if (role === 'assistant') {
-      return await this.updateConversationStage(updatedConversation);
-    }
-    
-    return updatedConversation;
+    return conversation;
   }
   
-  // 更新对话阶段
+  // 更新会话阶段
   async updateConversationStage(conversation: Conversation): Promise<Conversation> {
-    // 检测主题（如果尚未检测到）
-    let updatedConversation = { ...conversation };
-    
-    if (!updatedConversation.detectedTheme && updatedConversation.messages.length >= 2) {
-      const detectedTheme = await this.themeManager.detectTheme(updatedConversation.messages);
+    try {
+      const nextStage = await this.stageManager.determineNextStage(conversation);
       
-      if (detectedTheme) {
-        updatedConversation = {
-          ...updatedConversation,
-          detectedTheme
-        };
+      if (nextStage !== conversation.currentStage) {
+        console.log(`阶段变更: ${conversation.currentStage} -> ${nextStage} - 会话ID: ${conversation.id}`);
+        conversation.currentStage = nextStage;
+        conversation.updatedAt = Date.now();
       }
+      
+      return conversation;
+    } catch (error) {
+      console.error('更新会话阶段失败:', error);
+      return conversation;
     }
-    
-    // 确定下一个阶段
-    const nextStage = await this.stageManager.determineNextStage(updatedConversation);
-    
-    // 如果阶段发生变化，更新对话
-    if (nextStage !== updatedConversation.currentStage) {
-      updatedConversation = {
-        ...updatedConversation,
-        currentStage: nextStage
-      };
-    }
-    
-    return updatedConversation;
   }
   
-  // 获取对话
+  // 获取会话
   getConversation(conversationId: string, conversations: Conversation[]): Conversation | null {
     return conversations.find(conv => conv.id === conversationId) || null;
   }
   
-  // 获取对话的创作元素
+  // 获取会话创作元素
   getConversationCreativeElements(conversationId: string): any {
     return this.memoryManager.getCreativeElements(conversationId);
   }
   
-  // 手动设置对话阶段
+  // 设置会话阶段
   setConversationStage(conversation: Conversation, stage: ConversationStage): Conversation {
     return this.stageManager.setStage(conversation, stage);
   }
   
-  // 手动设置对话主题
+  // 设置会话主题
   setConversationTheme(conversation: Conversation, theme: ThemeCategory): Conversation {
     return {
       ...conversation,
-      detectedTheme: theme
+      detectedTheme: theme,
+      updatedAt: Date.now()
     };
   }
-
-  async processMessage(
-    conversation: Conversation,
-    userMessage: string
-  ): Promise<Conversation> {
-    // 1. 添加用户消息
-    const newMessage: Message = {
-      id: uuidv4(),
+  
+  // 处理消息
+  async processMessage(conversation: Conversation, userMessage: string, sessionId?: string): Promise<Conversation> {
+    console.log(`处理消息 - 会话ID: ${conversation.id}, 当前阶段: ${conversation.currentStage}`);
+    
+    // 创建用户消息对象
+    const userMessageObj: Message = {
+      id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
       role: 'user',
       content: userMessage,
       timestamp: Date.now(),
+      sessionId: sessionId // 设置sessionId
     };
-
-    conversation.messages.push(newMessage);
-
-    // 2. 获取AI回复
-    const aiResponse = await this.ollamaService.chat(
-      conversation.messages.map(({ role, content }) => ({ role, content }))
-    );
-
-    // 3. 添加AI回复
-    const aiMessage: Message = {
-      id: uuidv4(),
+    
+    // 添加用户消息到会话
+    conversation.messages.push(userMessageObj);
+    
+    // 存储用户消息到MemoryManager
+    this.memoryManager.addMessage(userMessageObj, conversation.id);
+    
+    // 检测主题（如果尚未检测且有足够的消息）
+    if (!conversation.detectedTheme && conversation.messages.length >= 2) {
+      try {
+        const detectedTheme = await this.themeDetector.detectTheme(conversation.messages);
+        
+        if (detectedTheme) {
+          console.log(`检测到主题: ${detectedTheme} - 会话ID: ${conversation.id}`);
+          conversation.detectedTheme = detectedTheme;
+        }
+      } catch (error) {
+        console.error('主题检测失败:', error);
+      }
+    }
+    
+    // 获取AI响应
+    const aiResponse = await this.aiTextService.getResponse(conversation);
+    console.log(`获取到AI响应 - 长度: ${aiResponse.length} 字符`);
+    
+    // 创建AI消息对象
+    const aiMessageObj: Message = {
+      id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
       role: 'assistant',
       content: aiResponse,
       timestamp: Date.now(),
+      sessionId: sessionId // 设置sessionId
     };
-
-    conversation.messages.push(aiMessage);
+    
+    // 添加AI消息到会话
+    conversation.messages.push(aiMessageObj);
+    
+    // 存储AI消息到MemoryManager
+    this.memoryManager.addMessage(aiMessageObj, conversation.id);
+    
+    // 更新会话的最后更新时间
     conversation.updatedAt = Date.now();
-
-    // 4. 更新对话阶段
+    
+    // 确定下一个阶段
+    const previousStage = conversation.currentStage;
     conversation.currentStage = this.determineNextStage(conversation);
-
+    
+    if (previousStage !== conversation.currentStage) {
+      console.log(`阶段变更: ${previousStage} -> ${conversation.currentStage} - 会话ID: ${conversation.id}`);
+    }
+    
     return conversation;
   }
-
+  
+  /**
+   * 确定会话的下一个阶段
+   * 
+   * @param conversation 当前会话
+   * @returns 下一个会话阶段
+   */
   private determineNextStage(conversation: Conversation): ConversationStage {
-    // 根据对话内容和当前阶段确定下一个阶段
-    // 这里需要实现具体的阶段转换逻辑
-    return conversation.currentStage;
+    // 当前阶段
+    const currentStage = conversation.currentStage;
+    
+    // 消息数量
+    const messageCount = conversation.messages.length;
+    
+    // 简单的阶段推进逻辑
+    // 这里可以根据实际需求实现更复杂的逻辑
+    if (currentStage === 'A' && messageCount >= 4) {
+      return 'B';
+    } else if (currentStage === 'B' && messageCount >= 8) {
+      return 'C';
+    } else if (currentStage === 'C' && messageCount >= 12) {
+      return 'D';
+    } else if (currentStage === 'D' && messageCount >= 16) {
+      return 'E';
+    } else if (currentStage === 'E' && messageCount >= 20) {
+      return 'F';
+    }
+    
+    // 默认保持当前阶段
+    return currentStage;
   }
 } 

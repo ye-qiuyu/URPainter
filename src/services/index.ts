@@ -1,6 +1,8 @@
 // AI服务
 import { OllamaService } from './ai/ollama';
 import { ComfyUIService } from './ai/comfyui';
+import { AITextService } from './ai/aiTextService';
+import { AIImageService } from './ai/aiImageService';
 
 // 记忆服务
 import { MemoryManager } from './memory/manager';
@@ -26,6 +28,8 @@ export {
   // AI服务
   OllamaService,
   ComfyUIService,
+  AITextService,
+  AIImageService,
   
   // 记忆服务
   MemoryManager,

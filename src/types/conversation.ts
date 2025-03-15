@@ -7,6 +7,7 @@ export interface Message {
   content: string;
   timestamp: number;
   images?: string[];
+  sessionId?: string;
 }
 
 export interface Conversation {
