@@ -98,7 +98,7 @@ export async function POST(request: Request) {
     const timeoutPromise = new Promise<string>((_, reject) => {
       setTimeout(() => {
         reject(new Error('图像生成请求超时'));
-      }, 30000); // 30秒超时
+      }, 20000); // 20秒超时
     });
     
     // 使用Promise.race确保请求不会无限等待

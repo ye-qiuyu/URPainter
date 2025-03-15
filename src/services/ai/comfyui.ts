@@ -238,7 +238,7 @@ export class ComfyUIService {
       let lastProgress = 0;
       let progressStableCount = 0;
       let lastCheckTime = Date.now();
-      const checkInterval = 2000; // 每2秒检查一次历史记录
+      const checkInterval = 500; // 每0.5秒检查一次历史记录
       let progressReached100 = false;
       let progressReached100Time = 0;
       
@@ -276,9 +276,9 @@ export class ComfyUIService {
               const waitTime = now - progressReached100Time;
               log('进度已达到100%，但未找到图像', { waitTime });
               
-              // 如果等待时间超过5秒，则认为图像生成已完成，但没有找到图像
-              if (waitTime > 5000) {
-                log('等待超过5秒仍未找到图像，结束等待');
+              // 如果等待时间超过3秒，则认为图像生成已完成，但没有找到图像
+              if (waitTime > 3000) {
+                log('等待超过3秒仍未找到图像，结束等待');
                 ws.close();
                 reject(new Error('未找到生成的图像'));
                 return true;
@@ -326,18 +326,18 @@ export class ComfyUIService {
               const found = await checkHistory();
               if (found) return;
               
-              // 如果没有找到图像，设置一个定时器，每秒检查一次历史记录
+              // 如果没有找到图像，设置一个定时器，每0.5秒检查一次历史记录
               const checkInterval = setInterval(async () => {
                 const found = await checkHistory();
                 if (found) {
                   clearInterval(checkInterval);
                 }
-              }, 1000);
+              }, 500);
               
-              // 5秒后如果仍然没有找到图像，清除定时器
+              // 3秒后如果仍然没有找到图像，清除定时器
               setTimeout(() => {
                 clearInterval(checkInterval);
-              }, 5000);
+              }, 3000);
             }
             
             // 检测进度是否停滞（连续多次相同进度）
@@ -423,7 +423,7 @@ export class ComfyUIService {
           ws.close();
           reject(new Error('图像生成超时'));
         }
-      }, 30000); // 减少到30秒超时
+      }, 20000); // 20秒超时
     });
   }
   
