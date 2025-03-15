@@ -18,19 +18,25 @@ export class OllamaService {
   }
 
   // 发送聊天请求
-  async chat(messages: Message[]): Promise<string> {
+  async chat(messages: { role: string; content: string }[]): Promise<string> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/chat`, {
+      // 从消息数组中提取最后一条用户消息作为提示词
+      const lastUserMessage = messages.filter(m => m.role === 'user').pop();
+      const prompt = lastUserMessage ? lastUserMessage.content : '';
+      
+      if (!prompt) {
+        return '无法获取有效的用户消息';
+      }
+      
+      // 使用generate端点
+      const response = await fetch(`${this.baseUrl}/api/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           model: this.model,
-          messages: messages.map(m => ({
-            role: m.role,
-            content: m.content
-          })),
+          prompt: prompt,
           stream: false
         }),
       });
@@ -40,7 +46,7 @@ export class OllamaService {
       }
 
       const data = await response.json();
-      return data.message?.content || '';
+      return data.response || '';
     } catch (error) {
       console.error('Ollama 服务调用失败:', error);
       return '模型调用失败，请稍后再试';

@@ -1,51 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { v4 as uuidv4 } from 'uuid';
-import { OllamaService } from '@/services/ai/ollama';
-import { PromptBuilderService } from '@/services/prompt/builder';
 import { ConversationManager } from '@/services/conversation/manager';
-import { Message } from '@/types/conversation';
+import { ConversationStage } from '@/types/conversation';
 
-export async function POST(req: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-    // 解析请求
-    const { message, conversationId, currentStage, detectedTheme } = await req.json();
-    
-    if (!message) {
-      return NextResponse.json(
-        { error: '消息内容不能为空' },
-        { status: 400 }
-      );
-    }
-    
-    // 获取服务实例
-    const ollamaService = OllamaService.getInstance();
-    const promptBuilder = PromptBuilderService.getInstance();
-    const conversationManager = ConversationManager.getInstance();
-    
-    // 构建提示词
-    const prompt = promptBuilder.buildConversationPrompt(
-      message,
-      conversationId,
-      currentStage,
-      detectedTheme
-    );
-    
-    // 调用AI服务
-    const aiResponse = await ollamaService.generate(prompt);
-    
-    // 构建响应
-    const responseMessage: Message = {
-      id: uuidv4(),
-      role: 'assistant',
-      content: aiResponse,
-      timestamp: Date.now()
-    };
-    
-    return NextResponse.json({ message: responseMessage });
+    const { message, conversationId } = await request.json();
+    const manager = ConversationManager.getInstance();
+
+    // 如果没有会话ID，创建新会话
+    let conversation = conversationId
+      ? { 
+          id: conversationId, 
+          messages: [],
+          currentStage: 'A' as ConversationStage,
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        } // 这里应该从数据库获取现有会话
+      : manager.createConversation();
+
+    // 处理消息
+    conversation = await manager.processMessage(conversation, message);
+
+    return NextResponse.json({
+      success: true,
+      data: conversation,
+    });
   } catch (error) {
-    console.error('聊天API错误:', error);
+    console.error('Error in chat API:', error);
     return NextResponse.json(
-      { error: '处理请求时发生错误' },
+      {
+        success: false,
+        error: 'Internal server error',
+      },
       { status: 500 }
     );
   }
