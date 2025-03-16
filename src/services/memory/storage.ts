@@ -1,84 +1,59 @@
 import { Message } from '@/types/conversation';
 
+/**
+ * 创意元素接口
+ * 定义了从对话中提取的创意元素结构
+ */
 export interface CreativeElements {
   theme?: string;
   mainCharacter?: string;
   supportElements?: string[];
 }
 
+/**
+ * MemoryStorage - 记忆处理类
+ * 
+ * 负责消息的验证和处理，不再负责存储功能。
+ * 实际存储将由前端的SessionStorage负责。
+ */
 export class MemoryStorage {
-  private messagesByConversation: Record<string, Message[]> = {};
-  private creativeElementsByConversation: Record<string, CreativeElements> = {};
-  private sessionToConversations: Record<string, string[]> = {};
+  /**
+   * 验证消息格式
+   * 
+   * @param message 要验证的消息
+   * @returns 消息是否有效
+   */
+  validateMessage(message: any): boolean {
+    return (
+      message &&
+      typeof message === 'object' &&
+      typeof message.id === 'string' &&
+      (message.role === 'user' || message.role === 'assistant') &&
+      typeof message.content === 'string' &&
+      typeof message.timestamp === 'number'
+    );
+  }
   
-  // 添加消息
-  addMessage(message: Message, conversationId: string): void {
-    if (!this.messagesByConversation[conversationId]) {
-      this.messagesByConversation[conversationId] = [];
+  /**
+   * 处理消息列表
+   * 验证并过滤消息列表中的无效消息
+   * 
+   * @param messages 要处理的消息列表
+   * @returns 处理后的有效消息列表
+   */
+  processMessages(messages: Message[]): Message[] {
+    if (!messages || !Array.isArray(messages)) {
+      console.warn('处理消息时收到无效消息列表');
+      return [];
     }
     
-    this.messagesByConversation[conversationId].push(message);
+    // 过滤无效消息
+    const validMessages = messages.filter(msg => this.validateMessage(msg));
     
-    if (message.sessionId) {
-      if (!this.sessionToConversations[message.sessionId]) {
-        this.sessionToConversations[message.sessionId] = [];
-      }
-      
-      if (!this.sessionToConversations[message.sessionId].includes(conversationId)) {
-        this.sessionToConversations[message.sessionId].push(conversationId);
-      }
-    }
-  }
-  
-  // 获取消息
-  getMessages(conversationId: string): Message[] {
-    return this.messagesByConversation[conversationId] || [];
-  }
-  
-  // 获取创作元素
-  getCreativeElements(conversationId: string): CreativeElements {
-    return this.creativeElementsByConversation[conversationId] || {};
-  }
-  
-  // 更新创作元素
-  updateCreativeElements(conversationId: string, elements: Partial<CreativeElements>): void {
-    this.creativeElementsByConversation[conversationId] = {
-      ...this.creativeElementsByConversation[conversationId],
-      ...elements
-    };
-  }
-  
-  // 清除特定对话的记忆
-  clearMemory(conversationId: string): void {
-    for (const sessionId in this.sessionToConversations) {
-      const index = this.sessionToConversations[sessionId].indexOf(conversationId);
-      if (index !== -1) {
-        this.sessionToConversations[sessionId].splice(index, 1);
-      }
+    if (validMessages.length !== messages.length) {
+      console.warn(`消息列表中有 ${messages.length - validMessages.length} 条无效消息被过滤`);
     }
     
-    delete this.messagesByConversation[conversationId];
-    delete this.creativeElementsByConversation[conversationId];
-  }
-  
-  // 清除所有记忆
-  clearAllMemory(): void {
-    this.messagesByConversation = {};
-    this.creativeElementsByConversation = {};
-    this.sessionToConversations = {};
-  }
-  
-  // 获取会话ID对应的所有对话ID
-  getConversationIds(sessionId: string): string[] {
-    return this.sessionToConversations[sessionId] || [];
-  }
-  
-  // 删除对话
-  deleteConversation(conversationId: string): boolean {
-    if (this.messagesByConversation[conversationId]) {
-      this.clearMemory(conversationId);
-      return true;
-    }
-    return false;
+    return validMessages;
   }
 } 

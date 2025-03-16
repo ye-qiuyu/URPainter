@@ -10,6 +10,7 @@ import { StageManager } from '../stages/manager';
 import { ThemeManager } from '../themes/manager';
 import { ThemeDetector } from '../themes/detector';
 import { AITextService } from '../ai/aiTextService';
+import { PromptBuilderService } from '../prompt/builder';
 
 export class ConversationManager {
   private static instance: ConversationManager;
@@ -18,6 +19,7 @@ export class ConversationManager {
   private themeManager: ThemeManager;
   private themeDetector: ThemeDetector;
   private aiTextService: AITextService;
+  private promptBuilder: PromptBuilderService;
   
   private constructor() {
     this.memoryManager = MemoryManager.getInstance();
@@ -25,6 +27,7 @@ export class ConversationManager {
     this.themeManager = ThemeManager.getInstance();
     this.themeDetector = new ThemeDetector();
     this.aiTextService = AITextService.getInstance();
+    this.promptBuilder = PromptBuilderService.getInstance();
   }
   
   public static getInstance(): ConversationManager {
@@ -63,8 +66,7 @@ export class ConversationManager {
     conversation.messages.push(message);
     conversation.updatedAt = Date.now();
     
-    // 存储消息到MemoryManager
-    this.memoryManager.addMessage(message, conversation.id);
+    // 不再调用MemoryManager.addMessage，因为我们现在使用ClientMemory
     
     return conversation;
   }
@@ -94,7 +96,22 @@ export class ConversationManager {
   
   // 获取会话创作元素
   getConversationCreativeElements(conversationId: string): any {
-    return this.memoryManager.getCreativeElements(conversationId);
+    // 使用MemoryManager的processHistory方法处理消息历史
+    // 这个方法会返回提取的创意元素
+    const messages = this.getConversationMessages(conversationId);
+    if (!messages || messages.length === 0) {
+      return {};
+    }
+    
+    const { creativeElements } = this.memoryManager.processHistory(messages, conversationId);
+    return creativeElements;
+  }
+  
+  // 获取会话消息
+  getConversationMessages(conversationId: string): Message[] {
+    // 这个方法应该从外部传入消息，不再从MemoryManager获取
+    // 在实际使用时，应该从ClientMemory或其他存储中获取
+    return [];
   }
   
   // 设置会话阶段
@@ -127,8 +144,7 @@ export class ConversationManager {
     // 添加用户消息到会话
     conversation.messages.push(userMessageObj);
     
-    // 存储用户消息到MemoryManager
-    this.memoryManager.addMessage(userMessageObj, conversation.id);
+    // 不再调用MemoryManager.addMessage
     
     // 检测主题（如果尚未检测且有足够的消息）
     if (!conversation.detectedTheme && conversation.messages.length >= 2) {
@@ -160,8 +176,7 @@ export class ConversationManager {
     // 添加AI消息到会话
     conversation.messages.push(aiMessageObj);
     
-    // 存储AI消息到MemoryManager
-    this.memoryManager.addMessage(aiMessageObj, conversation.id);
+    // 不再调用MemoryManager.addMessage
     
     // 更新会话的最后更新时间
     conversation.updatedAt = Date.now();
@@ -184,6 +199,11 @@ export class ConversationManager {
    * @returns 下一个会话阶段
    */
   private determineNextStage(conversation: Conversation): ConversationStage {
+    // 暂时不实现阶段转换功能，始终返回固定阶段
+    return 'A';
+    
+    // 注释掉原有的阶段判断逻辑，以便后续恢复
+    /*
     // 当前阶段
     const currentStage = conversation.currentStage;
     
@@ -206,5 +226,48 @@ export class ConversationManager {
     
     // 默认保持当前阶段
     return currentStage;
+    */
+  }
+  
+  // 添加新方法：处理带有记忆的消息
+  async processMessageWithMemory(
+    conversation: Conversation, 
+    userMessage: string,
+    formattedMemory: string,
+    creativeElements: any
+  ): Promise<string> {
+    console.log(`处理带记忆的消息 - 会话ID: ${conversation.id}, 阶段: ${conversation.currentStage}`);
+    
+    // 检测主题（如果尚未检测）
+    let detectedTheme = conversation.detectedTheme;
+    if (!detectedTheme && conversation.messages.length >= 2) {
+      console.log('尝试检测主题...');
+      detectedTheme = await this.themeDetector.detectTheme(conversation.messages);
+      console.log(`主题检测结果: ${detectedTheme || '未检测到'}`);
+    }
+    
+    // 构建提示词
+    const prompt = this.promptBuilder.buildConversationPrompt(
+      userMessage,
+      conversation.id,
+      conversation.currentStage,
+      detectedTheme,
+      formattedMemory,
+      creativeElements
+    );
+    
+    // 获取AI响应
+    console.log('请求AI响应...');
+    const aiResponse = await this.aiTextService.getResponse(prompt);
+    console.log(`收到AI响应 - 长度: ${aiResponse.length}`);
+    
+    // 确定下一阶段
+    const nextStage = this.determineNextStage(conversation);
+    if (nextStage !== conversation.currentStage) {
+      console.log(`阶段变更: ${conversation.currentStage} -> ${nextStage}`);
+      conversation.currentStage = nextStage;
+    }
+    
+    return aiResponse;
   }
 } 

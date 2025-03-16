@@ -26,24 +26,33 @@ export class AITextService {
   }
   
   /**
-   * 根据会话获取AI响应
+   * 根据会话或提示词获取AI响应
    * 
-   * @param conversation 当前会话
+   * @param input 当前会话或提示词字符串
    * @returns AI响应文本
    */
-  async getResponse(conversation: Conversation): Promise<string> {
-    console.log(`请求AI响应 - 会话ID: ${conversation.id}, 消息数量: ${conversation.messages.length}`);
-    
+  async getResponse(input: Conversation | string): Promise<string> {
     try {
+      // 处理字符串提示词
+      if (typeof input === 'string') {
+        console.log(`请求AI响应 - 提示词长度: ${input.length}`);
+        const response = await this.ollamaService.generate(input);
+        console.log(`收到AI响应 - 响应长度: ${response.length}`);
+        return response;
+      }
+      
+      // 处理会话对象
+      console.log(`请求AI响应 - 会话ID: ${input.id}, 消息数量: ${input.messages.length}`);
+      
       // 将会话消息转换为Ollama所需的格式
-      const messages = conversation.messages.map(({ role, content }) => ({ 
+      const messages = input.messages.map(({ role, content }) => ({ 
         role, 
         content 
       }));
       
       // 调用Ollama服务获取响应
       const response = await this.ollamaService.chat(messages);
-      console.log(`收到AI响应 - 会话ID: ${conversation.id}, 响应长度: ${response.length}`);
+      console.log(`收到AI响应 - 会话ID: ${input.id}, 响应长度: ${response.length}`);
       
       return response;
     } catch (error) {

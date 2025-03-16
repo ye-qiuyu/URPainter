@@ -10,9 +10,12 @@ import { ComfyUIService } from './comfyui';
  */
 export class AIImageService {
   private static instance: AIImageService;
+  private comfyUIService: ComfyUIService;
   
   private constructor() {
     // 初始化图像生成服务
+    this.comfyUIService = ComfyUIService.getInstance();
+    console.log('[AIImageService] 初始化完成');
   }
   
   /**
@@ -32,8 +35,39 @@ export class AIImageService {
    * @param options 其他选项，如负面提示词、会话ID等
    * @returns 生成的图像URL
    */
-  async generateImage(prompt: string, options?: any): Promise<string> {
-    // TODO: 实现图像生成逻辑
-    throw new Error('AIImageService.generateImage 尚未实现');
+  async generateImage(prompt: string, options?: {
+    negativePrompt?: string;
+    sessionId?: string;
+    useMock?: boolean;
+  }): Promise<string> {
+    try {
+      console.log('[AIImageService] 开始生成图像', { prompt, options });
+      
+      // 提取选项
+      const negativePrompt = options?.negativePrompt || '';
+      const sessionId = options?.sessionId || 'default-session';
+      const useMock = options?.useMock || false;
+      
+      // 如果使用模拟数据，返回一个默认图像URL
+      if (useMock) {
+        console.log('[AIImageService] 使用模拟图像');
+        return 'https://via.placeholder.com/512x512.png?text=AI+Generated+Image';
+      }
+      
+      // 调用ComfyUI服务生成图像
+      const imageUrl = await this.comfyUIService.generateImage(prompt, negativePrompt, sessionId);
+      
+      if (!imageUrl) {
+        console.error('[AIImageService] 图像生成失败，返回默认图像');
+        return 'https://via.placeholder.com/512x512.png?text=Generation+Failed';
+      }
+      
+      console.log('[AIImageService] 图像生成成功', { imageUrl });
+      return imageUrl;
+    } catch (error) {
+      console.error('[AIImageService] 图像生成出错:', error);
+      // 出错时返回一个错误图像
+      return 'https://via.placeholder.com/512x512.png?text=Error';
+    }
   }
 } 

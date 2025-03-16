@@ -6,11 +6,19 @@ import { formatMessagesToPrompt, formatCreativeElements } from './memory';
 import { Message } from '@/types/conversation';
 
 export class PromptBuilder {
-  // 构建完整提示词
+  /**
+   * 构建完整提示词
+   * 
+   * @param state 提示词状态
+   * @param userMessage 用户消息
+   * @param messagesOrFormattedMemory 消息数组或已格式化的记忆文本
+   * @param creativeElements 创意元素
+   * @returns 构建的完整提示词
+   */
   buildFullPrompt(
     state: PromptState, 
     userMessage: string,
-    messages: Message[],
+    messagesOrFormattedMemory: Message[] | string,
     creativeElements?: {
       theme?: string;
       mainCharacter?: string;
@@ -21,7 +29,17 @@ export class PromptBuilder {
     const systemBase = systemBasePrompt;
     const stagePrompt = stagePrompts[state.currentStage];
     const themePrompt = state.themeDetected ? themePrompts[state.themeDetected] : '';
-    const messagesPrompt = formatMessagesToPrompt(messages);
+    
+    // 处理消息/记忆参数
+    let messagesPrompt: string;
+    if (typeof messagesOrFormattedMemory === 'string') {
+      // 如果是字符串，直接使用
+      messagesPrompt = messagesOrFormattedMemory;
+    } else {
+      // 如果是消息数组，格式化为文本
+      messagesPrompt = formatMessagesToPrompt(messagesOrFormattedMemory);
+    }
+    
     const elementsPrompt = formatCreativeElements(
       creativeElements?.theme,
       creativeElements?.mainCharacter,

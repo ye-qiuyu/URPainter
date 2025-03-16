@@ -1,23 +1,43 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import StudioLayout from '@/components/layout/StudioLayout';
 import { LLMSection, SDMSection } from '@/components/interaction';
 import { ToolBar } from '@/components/ui';
 import { Message } from '@/types/conversation';
 import DebugPanel from '@/components/debug/DebugPanel';
+import { ClientMemory } from '@/lib/memory';
+import { v4 as uuidv4 } from 'uuid';
 
 // 动态导入画布组件以避免SSR问题
 const Canvas = dynamic(() => import('@/components/canvas/Canvas'), { ssr: false });
 
 export default function StudioPage() {
+  const [conversationId, setConversationId] = useState<string>('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [images, setImages] = useState<string[]>([]);
   const [imageLoading, setImageLoading] = useState(false);
   const [error, setError] = useState<string>('');
   const [isTyping, setIsTyping] = useState(false);
+
+  // 初始化会话ID
+  useEffect(() => {
+    // 如果没有会话ID，创建一个新的
+    if (!conversationId) {
+      const newConversationId = uuidv4();
+      setConversationId(newConversationId);
+      console.log(`创建新会话ID: ${newConversationId}`);
+    }
+    
+    // 加载会话消息
+    const storedMessages = ClientMemory.getMessages(conversationId);
+    if (storedMessages.length > 0) {
+      setMessages(storedMessages);
+      console.log(`加载会话消息: ${storedMessages.length}条`);
+    }
+  }, [conversationId]);
 
   const handleSendMessage = async (message: string) => {
     try {
@@ -31,31 +51,49 @@ export default function StudioPage() {
         content: message,
         timestamp: Date.now(),
       };
-      setMessages(prev => [...prev, userMessage]);
+      
+      // 更新本地状态
+      const updatedMessages = [...messages, userMessage];
+      setMessages(updatedMessages);
+      
+      // 保存到会话存储
+      ClientMemory.saveMessages(conversationId, updatedMessages);
 
-      // 发送请求到API
+      // 发送请求到API，包含消息历史
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ 
+          message,
+          conversationId,
+          messageHistory: updatedMessages
+        }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || '对话请求失败');
+        throw new Error(errorData.error || `API请求失败: ${response.status}`);
       }
 
       // 处理API响应
       const data = await response.json();
-      const aiMessage = data.data.messages[data.data.messages.length - 1];
-      setMessages(prev => [...prev, {
+      
+      // 创建AI消息
+      const aiMessage: Message = {
         id: Date.now().toString(),
         role: 'assistant',
-        content: aiMessage.content,
+        content: data.data.aiResponse,
         timestamp: Date.now(),
-      }]);
+      };
+      
+      // 更新本地状态
+      const finalMessages = [...updatedMessages, aiMessage];
+      setMessages(finalMessages);
+      
+      // 保存到会话存储
+      ClientMemory.saveMessages(conversationId, finalMessages);
 
       // TODO: 根据AI响应决定是否需要生成图片
       
@@ -65,6 +103,20 @@ export default function StudioPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // 清除会话
+  const handleClearConversation = () => {
+    ClientMemory.clearConversation(conversationId);
+    setMessages([]);
+  };
+
+  // 创建新会话
+  const handleNewConversation = () => {
+    const newConversationId = uuidv4();
+    setConversationId(newConversationId);
+    setMessages([]);
+    console.log(`创建新会话: ${newConversationId}`);
   };
 
   return (
@@ -101,6 +153,8 @@ export default function StudioPage() {
             loading={loading}
             onSendMessage={handleSendMessage}
             onInputStateChange={setIsTyping}
+            onClearConversation={handleClearConversation}
+            onNewConversation={handleNewConversation}
           />
         )
       }

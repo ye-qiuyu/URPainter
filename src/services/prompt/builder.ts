@@ -1,15 +1,13 @@
 import { PromptBuilder as BasePromptBuilder } from '@/prompts/builder';
-import { MemoryManager } from '../memory/manager';
 import { Message, ConversationStage, ThemeCategory } from '@/types/conversation';
+import { CreativeElements } from '../memory/storage';
 
 export class PromptBuilderService {
   private static instance: PromptBuilderService;
   private baseBuilder: BasePromptBuilder;
-  private memoryManager: MemoryManager;
   
   private constructor() {
     this.baseBuilder = new BasePromptBuilder();
-    this.memoryManager = MemoryManager.getInstance();
   }
   
   public static getInstance(): PromptBuilderService {
@@ -19,18 +17,26 @@ export class PromptBuilderService {
     return PromptBuilderService.instance;
   }
   
-  // 构建对话提示词
+  /**
+   * 构建对话提示词
+   * 
+   * @param userMessage 用户消息
+   * @param conversationId 会话ID
+   * @param currentStage 当前阶段
+   * @param detectedTheme 检测到的主题
+   * @param formattedMemory 格式化的记忆文本
+   * @param creativeElements 创意元素
+   * @returns 构建的提示词
+   */
   buildConversationPrompt(
     userMessage: string,
     conversationId: string,
     currentStage: ConversationStage,
-    detectedTheme?: ThemeCategory
+    detectedTheme?: ThemeCategory,
+    formattedMemory: string = '',
+    creativeElements: Partial<CreativeElements> = {}
   ): string {
-    // 获取对话历史
-    const messages = this.memoryManager.getMessages(conversationId);
-    
-    // 获取创作元素
-    const creativeElements = this.memoryManager.getCreativeElements(conversationId);
+    console.log(`构建提示词 - 会话ID: ${conversationId}, 阶段: ${currentStage}`);
     
     // 构建提示词状态
     const promptState = {
@@ -43,19 +49,24 @@ export class PromptBuilderService {
     return this.baseBuilder.buildFullPrompt(
       promptState,
       userMessage,
-      messages,
+      formattedMemory,
       creativeElements
     );
   }
   
-  // 构建图像生成提示词
+  /**
+   * 构建图像生成提示词
+   * 
+   * @param conversationId 会话ID
+   * @param detectedTheme 检测到的主题
+   * @param creativeElements 创意元素
+   * @returns 构建的图像生成提示词
+   */
   buildImageGenerationPrompt(
     conversationId: string,
-    detectedTheme?: ThemeCategory
+    detectedTheme?: ThemeCategory,
+    creativeElements: Partial<CreativeElements> = {}
   ): string {
-    // 获取创作元素
-    const creativeElements = this.memoryManager.getCreativeElements(conversationId);
-    
     // 构建基础提示词
     let prompt = '儿童友好的插图，';
     
@@ -84,7 +95,12 @@ export class PromptBuilderService {
     return prompt;
   }
   
-  // 获取主题关键词
+  /**
+   * 获取主题关键词
+   * 
+   * @param theme 主题类别
+   * @returns 主题关键词列表
+   */
   private getThemeKeywords(theme: ThemeCategory): string[] {
     const keywordsByTheme: Record<ThemeCategory, string[]> = {
       'SPACE': ['太空', '宇宙', '星球', '宇航员'],

@@ -9,18 +9,42 @@ interface DebugPanelProps {
   loading?: boolean;
   onSendMessage: (message: string) => Promise<void>;
   onInputStateChange?: (isTyping: boolean) => void;
+  onClearConversation?: () => void;
+  onNewConversation?: () => void;
 }
 
 const DebugPanel: React.FC<DebugPanelProps> = ({ 
   messages, 
   loading, 
   onSendMessage,
-  onInputStateChange 
+  onInputStateChange,
+  onClearConversation,
+  onNewConversation
 }) => {
   return (
     <div className="w-[300px] h-full bg-white border-l border-gray-200 overflow-hidden flex flex-col">
-      <div className="p-3 border-b border-gray-200 bg-gray-50">
+      <div className="p-3 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
         <h2 className="text-sm font-medium text-gray-700">调试面板 - 对话历史</h2>
+        <div className="flex space-x-2">
+          {onClearConversation && (
+            <button 
+              onClick={onClearConversation}
+              className="text-xs px-2 py-1 bg-gray-200 hover:bg-gray-300 rounded text-gray-700"
+              title="清除当前会话"
+            >
+              清除
+            </button>
+          )}
+          {onNewConversation && (
+            <button 
+              onClick={onNewConversation}
+              className="text-xs px-2 py-1 bg-blue-500 hover:bg-blue-600 rounded text-white"
+              title="创建新会话"
+            >
+              新会话
+            </button>
+          )}
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto p-4">
         <div className="space-y-4">

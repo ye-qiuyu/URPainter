@@ -1,17 +1,29 @@
 import { Message } from '@/types/conversation';
 import { MemoryStorage, CreativeElements } from './storage';
 import { MemoryFormatter } from './formatter';
+import { MemoryController, ProcessedMemory } from './controller';
 
+/**
+ * MemoryManager - 记忆管理器
+ * 
+ * 负责协调记忆的处理和格式化，是应用程序与记忆系统交互的主要接口。
+ * 处理从外部传入的消息历史，应用记忆策略，并返回处理后的数据。
+ */
 export class MemoryManager {
   private static instance: MemoryManager;
   private storage: MemoryStorage;
   private formatter: MemoryFormatter;
+  private controller: MemoryController;
   
   private constructor() {
     this.storage = new MemoryStorage();
     this.formatter = new MemoryFormatter();
+    this.controller = MemoryController.getInstance();
   }
   
+  /**
+   * 获取MemoryManager的单例实例
+   */
   public static getInstance(): MemoryManager {
     if (!MemoryManager.instance) {
       MemoryManager.instance = new MemoryManager();
@@ -19,73 +31,50 @@ export class MemoryManager {
     return MemoryManager.instance;
   }
   
-  // 添加消息到记忆
-  addMessage(message: Message, conversationId: string): void {
-    this.storage.addMessage(message, conversationId);
+  /**
+   * 处理消息历史
+   * 
+   * 处理从外部传入的消息历史，应用窗口策略，并返回处理后的数据
+   * 
+   * @param messages 消息历史
+   * @param conversationId 会话ID
+   * @param options 选项，如窗口大小
+   * @returns 处理后的记忆数据
+   */
+  processHistory(
+    messages: Message[], 
+    conversationId: string,
+    options?: { windowSize?: number }
+  ): ProcessedMemory {
+    console.log(`处理会话记忆 - ID: ${conversationId}, 消息数: ${messages.length}`);
     
-    // 分析消息并提取创作元素
-    if (message.role === 'assistant') {
-      const newElements = this.formatter.extractCreativeElements([message]);
-      if (Object.keys(newElements).length > 0) {
-        this.updateCreativeElements(conversationId, newElements);
-      }
-    }
+    // 验证和清理消息
+    const validMessages = this.storage.processMessages(messages);
+    
+    // 应用记忆处理策略
+    const windowSize = options?.windowSize ?? 20;
+    return this.controller.processMessageHistory(validMessages, windowSize);
   }
   
-  // 获取对话的所有消息
-  getMessages(conversationId: string): Message[] {
-    return this.storage.getMessages(conversationId);
-  }
-  
-  // 获取格式化的记忆
-  getFormattedMemory(conversationId: string): string {
-    const messages = this.getMessages(conversationId);
+  /**
+   * 格式化消息历史
+   * 
+   * 将消息历史格式化为提示词可用的文本
+   * 
+   * @param messages 消息历史
+   * @returns 格式化后的文本
+   */
+  formatMessages(messages: Message[]): string {
     return this.formatter.formatMessages(messages);
   }
   
-  // 获取创作元素
-  getCreativeElements(conversationId: string): CreativeElements {
-    return this.storage.getCreativeElements(conversationId);
-  }
-  
-  // 获取格式化的创作元素
-  getFormattedCreativeElements(conversationId: string): string {
-    const elements = this.getCreativeElements(conversationId);
-    return this.formatter.formatCreativeElements(elements);
-  }
-  
-  // 更新创作元素
-  updateCreativeElements(conversationId: string, elements: Partial<CreativeElements>): void {
-    this.storage.updateCreativeElements(conversationId, elements);
-  }
-  
-  // 清除特定对话的记忆
-  clearMemory(conversationId: string): void {
-    this.storage.clearMemory(conversationId);
-  }
-  
-  // 清除所有记忆
-  clearAllMemory(): void {
-    this.storage.clearAllMemory();
-  }
-  
-  // 分析整个对话历史，提取创作元素
-  analyzeConversationHistory(conversationId: string): void {
-    const messages = this.getMessages(conversationId);
-    const extractedElements = this.formatter.extractCreativeElements(messages);
-    
-    if (Object.keys(extractedElements).length > 0) {
-      this.updateCreativeElements(conversationId, extractedElements);
-    }
-  }
-  
-  // 获取会话ID对应的所有对话ID
-  getConversationIds(sessionId: string): string[] {
-    return this.storage.getConversationIds(sessionId);
-  }
-  
-  // 删除对话
-  deleteConversation(conversationId: string): boolean {
-    return this.storage.deleteConversation(conversationId);
+  /**
+   * 从消息中提取创意元素
+   * 
+   * @param messages 消息历史
+   * @returns 提取的创意元素
+   */
+  extractCreativeElements(messages: Message[]): Partial<CreativeElements> {
+    return this.formatter.extractCreativeElements(messages);
   }
 } 

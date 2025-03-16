@@ -3,12 +3,17 @@ import { ThemeManager } from '@/services/themes/manager';
 import { ThemeDetector } from '@/services/themes/detector';
 import { ConversationManager } from '@/services/conversation/manager';
 import { MemoryManager } from '@/services/memory/manager';
-import { ThemeCategory, ConversationStage } from '@/types/conversation';
+import { ThemeCategory, Message, ConversationStage } from '@/types/conversation';
+
+// 获取固定阶段
+function getFixedStage(): ConversationStage {
+  return 'A';
+}
 
 export async function POST(req: NextRequest) {
   try {
     // 解析请求
-    const { conversationId, action, theme, messages } = await req.json();
+    const { conversationId, action, theme, messages = [] } = await req.json();
     console.log('收到主题管理请求:', { conversationId, action, theme });
     
     if (!conversationId) {
@@ -66,26 +71,25 @@ export async function POST(req: NextRequest) {
           );
         }
         
-        // 从MemoryManager获取会话信息
-        const messages = memoryManager.getMessages(conversationId);
-        
-        // 构建会话对象
+        // 使用传入的消息构建会话对象
         let conversation;
         if (messages && messages.length > 0) {
           conversation = {
             id: conversationId,
             messages: messages,
-            currentStage: 'A' as ConversationStage, // 默认阶段，可以根据实际情况调整
+            currentStage: getFixedStage(), // 使用固定阶段
+            detectedTheme: theme as ThemeCategory, // 使用请求中的theme
             createdAt: messages[0].timestamp,
             updatedAt: Date.now()
           };
-          console.log(`找到会话: ${conversationId}, 消息数量: ${messages.length}`);
+          console.log(`构建会话: ${conversationId}, 消息数量: ${messages.length}`);
         } else {
           // 如果没有消息历史，创建一个基本会话对象
           conversation = {
             id: conversationId,
             messages: [],
-            currentStage: 'A' as ConversationStage,
+            currentStage: getFixedStage(), // 使用固定阶段
+            detectedTheme: theme as ThemeCategory,
             createdAt: Date.now(),
             updatedAt: Date.now()
           };
@@ -93,17 +97,13 @@ export async function POST(req: NextRequest) {
         }
         
         // 设置主题
-        const updatedConversation = conversationManager.setConversationTheme(
-          conversation, 
-          theme as ThemeCategory
-        );
+        const updatedConversation = conversationManager.setConversationTheme(conversation, theme as ThemeCategory);
         console.log(`主题已更新: ${theme} - 会话ID: ${conversationId}`);
         
         return NextResponse.json({ 
           success: true, 
           theme: updatedConversation.detectedTheme,
-          info: updatedConversation.detectedTheme ? 
-            themeManager.getThemeInfo(updatedConversation.detectedTheme) : null
+          info: themeManager.getThemeInfo(updatedConversation.detectedTheme as ThemeCategory)
         });
       }
       
