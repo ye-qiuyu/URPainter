@@ -269,7 +269,13 @@ export class ConversationManager {
         creativeElements
       );
       
-      console.log(`构建提示词完成 - 长度: ${prompt.length}`);
+      // 添加详细的prompt日志
+      console.log(`完整提示词内容:\n${'-'.repeat(80)}\n${prompt}\n${'-'.repeat(80)}`);
+      
+      // 在开发环境中，将prompt保存到conversation对象中，以便前端可以访问
+      if (process.env.NODE_ENV === 'development') {
+        (conversation as any)._lastPrompt = prompt;
+      }
       
       // 获取AI响应
       console.log('请求AI响应...');
@@ -281,6 +287,17 @@ export class ConversationManager {
       if (nextStage !== conversation.currentStage) {
         console.log(`阶段变更: ${conversation.currentStage} -> ${nextStage}`);
         conversation.currentStage = nextStage;
+      }
+      
+      // 在开发环境中，将prompt添加到响应中，以便前端可以在控制台查看
+      if (process.env.NODE_ENV === 'development') {
+        return JSON.stringify({
+          response: aiResponse,
+          _debug: {
+            prompt: prompt,
+            promptLength: prompt.length
+          }
+        });
       }
       
       return aiResponse;

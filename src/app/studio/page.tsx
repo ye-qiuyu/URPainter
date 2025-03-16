@@ -80,6 +80,13 @@ export default function StudioPage() {
       // 处理API响应
       const data = await response.json();
       
+      // 在开发环境下，打印调试信息到控制台
+      if (data.data._debug) {
+        console.log('调试信息:', data.data._debug);
+        console.log('提示词内容:', data.data._debug.prompt);
+        console.log('提示词长度:', data.data._debug.promptLength);
+      }
+      
       // 创建AI消息
       const aiMessage: Message = {
         id: Date.now().toString(),

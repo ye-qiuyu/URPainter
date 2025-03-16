@@ -56,11 +56,29 @@ export async function POST(request: NextRequest) {
       creativeElements
     );
     
+    // 处理开发环境下的特殊响应格式
+    let responseText = aiResponse;
+    let debugInfo = null;
+    
+    if (process.env.NODE_ENV === 'development' && aiResponse.startsWith('{') && aiResponse.endsWith('}')) {
+      try {
+        const parsedResponse = JSON.parse(aiResponse);
+        if (parsedResponse.response && parsedResponse._debug) {
+          responseText = parsedResponse.response;
+          debugInfo = parsedResponse._debug;
+          console.log('开发环境调试信息可用');
+        }
+      } catch (e) {
+        // 如果解析失败，使用原始响应
+        console.log('响应解析失败，使用原始响应');
+      }
+    }
+    
     // 创建AI响应消息对象
     const aiMessage: Message = {
       id: Date.now().toString(),
       role: 'assistant',
-      content: aiResponse,
+      content: responseText,
       timestamp: Date.now()
     };
     
@@ -76,17 +94,25 @@ export async function POST(request: NextRequest) {
       updatedAt: Date.now()
     };
     
-    console.log(`消息处理完成, 响应长度: ${aiResponse.length}`);
+    console.log(`消息处理完成, 响应长度: ${responseText.length}`);
 
-    return NextResponse.json({
+    // 在开发环境下，将调试信息添加到响应中
+    const responseData = {
       success: true,
       data: {
         conversationId: updatedConversation.id,
-        aiResponse,
+        aiResponse: responseText,
         aiMessage,
-        currentStage: updatedConversation.currentStage
-      },
-    });
+        currentStage: updatedConversation.currentStage,
+        _debug: undefined as any
+      }
+    };
+    
+    if (process.env.NODE_ENV === 'development' && debugInfo) {
+      responseData.data._debug = debugInfo;
+    }
+
+    return NextResponse.json(responseData);
   } catch (error) {
     console.error('Error in chat API:', error);
     return NextResponse.json(
