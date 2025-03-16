@@ -36,27 +36,76 @@ export class MemoryFormatter {
   
   // 提取关键创作元素
   extractCreativeElements(messages: Message[]): Partial<CreativeElements> {
-    // 这里可以实现更复杂的提取逻辑，例如使用LLM分析对话
-    // 简化实现，仅作为示例
-    const elements: Partial<CreativeElements> = {};
+    // 初始化创意元素对象
+    const elements: Partial<CreativeElements> = {
+      theme: undefined,
+      mainCharacter: undefined,
+      supportElements: []
+    };
     
-    // 从最近的消息中查找可能的主题和主角
-    for (let i = messages.length - 1; i >= 0; i--) {
+    // 如果没有消息，返回空对象
+    if (!messages || messages.length === 0) {
+      return elements;
+    }
+    
+    // 关键词匹配模式
+    const themePatterns = [
+      /主题[是为：:]\s*([^，。!?]+)/i,
+      /关于([^，。!?]+)的故事/i,
+      /想[画做创]([^，。!?]+)/i
+    ];
+    
+    const characterPatterns = [
+      /(主角|主要角色)[是为：:]\s*([^，。!?]+)/i,
+      /([^，。!?]+)是主角/i,
+      /画一[个只条匹]([^，。!?]+)/i
+    ];
+    
+    const supportElementPatterns = [
+      /(还有|还需要|也有|加上)([^，。!?]+)/i,
+      /在([^，。!?]+)里面/i,
+      /和([^，。!?]+)一起/i
+    ];
+    
+    // 遍历所有消息，提取关键元素
+    for (let i = 0; i < messages.length; i++) {
       const msg = messages[i];
+      const content = msg.content.toLowerCase();
       
-      // 仅分析AI消息，因为它们更可能包含确认的元素
-      if (msg.role === 'assistant') {
-        const content = msg.content.toLowerCase();
-        
-        // 简单的关键词匹配
-        if (!elements.theme && content.includes('主题')) {
-          const themeMatch = content.match(/主题[是为：:]\s*([^，。!?]+)/);
-          if (themeMatch) elements.theme = themeMatch[1].trim();
+      // 提取主题
+      if (!elements.theme) {
+        for (const pattern of themePatterns) {
+          const match = content.match(pattern);
+          if (match && match[1]) {
+            elements.theme = match[1].trim();
+            break;
+          }
         }
-        
-        if (!elements.mainCharacter && (content.includes('主角') || content.includes('主要角色'))) {
-          const characterMatch = content.match(/(主角|主要角色)[是为：:]\s*([^，。!?]+)/);
-          if (characterMatch) elements.mainCharacter = characterMatch[2].trim();
+      }
+      
+      // 提取主角
+      if (!elements.mainCharacter) {
+        for (const pattern of characterPatterns) {
+          const match = content.match(pattern);
+          if (match && (match[2] || match[1])) {
+            elements.mainCharacter = (match[2] || match[1]).trim();
+            break;
+          }
+        }
+      }
+      
+      // 提取支持元素
+      for (const pattern of supportElementPatterns) {
+        const match = content.match(pattern);
+        if (match && (match[1] || match[2])) {
+          const element = match[2] ? match[2].trim() : match[1].trim();
+          // 避免重复添加
+          if (element && 
+              element !== elements.theme && 
+              element !== elements.mainCharacter && 
+              !elements.supportElements?.includes(element)) {
+            elements.supportElements = [...(elements.supportElements || []), element];
+          }
         }
       }
     }

@@ -4,9 +4,17 @@ import { Message } from '@/types/conversation';
 export function formatMessagesToPrompt(messages: Message[]): string {
   if (!messages.length) return '';
   
-  return messages.map(msg => 
-    `${msg.role === 'user' ? '用户' : 'AI助手'}: ${msg.content}`
-  ).join('\n\n');
+  // 添加记忆重要性的前缀
+  const prefix = `以下是之前的对话历史，请仔细阅读并记住这些内容，因为用户可能会询问关于之前对话的问题：\n\n`;
+  
+  // 格式化每条消息，添加时间信息
+  const formattedMessages = messages.map((msg, index) => {
+    const time = new Date(msg.timestamp).toLocaleTimeString();
+    const messageNumber = index + 1;
+    return `消息#${messageNumber} [${time}] ${msg.role === 'user' ? '用户' : 'AI助手'}: ${msg.content}`;
+  }).join('\n\n');
+  
+  return prefix + formattedMessages;
 }
 
 // 格式化已确认的创作元素

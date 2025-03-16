@@ -11,6 +11,7 @@ import { ThemeManager } from '../themes/manager';
 import { ThemeDetector } from '../themes/detector';
 import { AITextService } from '../ai/aiTextService';
 import { PromptBuilderService } from '../prompt/builder';
+import { MemoryController } from '../memory/controller';
 
 export class ConversationManager {
   private static instance: ConversationManager;
@@ -236,38 +237,56 @@ export class ConversationManager {
     formattedMemory: string,
     creativeElements: any
   ): Promise<string> {
-    console.log(`处理带记忆的消息 - 会话ID: ${conversation.id}, 阶段: ${conversation.currentStage}`);
-    
-    // 检测主题（如果尚未检测）
-    let detectedTheme = conversation.detectedTheme;
-    if (!detectedTheme && conversation.messages.length >= 2) {
-      console.log('尝试检测主题...');
-      detectedTheme = await this.themeDetector.detectTheme(conversation.messages);
-      console.log(`主题检测结果: ${detectedTheme || '未检测到'}`);
+    try {
+      console.log(`处理消息 - 会话ID: ${conversation.id}, 消息长度: ${userMessage.length}`);
+      
+      // 检测主题（如果尚未检测）
+      let detectedTheme = conversation.detectedTheme;
+      if (!detectedTheme && conversation.messages.length >= 2) {
+        console.log('尝试检测主题...');
+        detectedTheme = await this.themeDetector.detectTheme(conversation.messages);
+        console.log(`主题检测结果: ${detectedTheme || '未检测到'}`);
+      }
+      
+      // 检查是否是记忆相关的查询
+      const memoryController = MemoryController.getInstance();
+      const relevantMemory = memoryController.retrieveRelevantMemory(conversation.messages, userMessage);
+      
+      // 如果是记忆相关的查询，添加相关记忆到提示词
+      let enhancedMemory = formattedMemory;
+      if (relevantMemory) {
+        enhancedMemory = `${formattedMemory}\n\n特别注意以下与用户问题相关的记忆:\n${relevantMemory}`;
+        console.log(`检测到记忆相关查询，添加相关记忆到提示词`);
+      }
+      
+      // 构建提示词
+      const prompt = this.promptBuilder.buildConversationPrompt(
+        userMessage,
+        conversation.id,
+        conversation.currentStage,
+        detectedTheme,
+        enhancedMemory,
+        creativeElements
+      );
+      
+      console.log(`构建提示词完成 - 长度: ${prompt.length}`);
+      
+      // 获取AI响应
+      console.log('请求AI响应...');
+      const aiResponse = await this.aiTextService.getResponse(prompt);
+      console.log(`收到AI响应 - 长度: ${aiResponse.length}`);
+      
+      // 确定下一阶段
+      const nextStage = this.determineNextStage(conversation);
+      if (nextStage !== conversation.currentStage) {
+        console.log(`阶段变更: ${conversation.currentStage} -> ${nextStage}`);
+        conversation.currentStage = nextStage;
+      }
+      
+      return aiResponse;
+    } catch (error) {
+      console.error('处理消息时出错:', error);
+      return '抱歉，我现在无法回答您的问题。请稍后再试。';
     }
-    
-    // 构建提示词
-    const prompt = this.promptBuilder.buildConversationPrompt(
-      userMessage,
-      conversation.id,
-      conversation.currentStage,
-      detectedTheme,
-      formattedMemory,
-      creativeElements
-    );
-    
-    // 获取AI响应
-    console.log('请求AI响应...');
-    const aiResponse = await this.aiTextService.getResponse(prompt);
-    console.log(`收到AI响应 - 长度: ${aiResponse.length}`);
-    
-    // 确定下一阶段
-    const nextStage = this.determineNextStage(conversation);
-    if (nextStage !== conversation.currentStage) {
-      console.log(`阶段变更: ${conversation.currentStage} -> ${nextStage}`);
-      conversation.currentStage = nextStage;
-    }
-    
-    return aiResponse;
   }
 } 

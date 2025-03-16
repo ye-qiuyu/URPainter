@@ -106,9 +106,10 @@ ${formatRequirements}
   ): string {
     return `
 <context>
-${themePrompt ? `# 主题知识\n${themePrompt}\n\n` : ''}
-# 对话历史
+# 重要对话历史
 ${messagesPrompt || '尚无对话历史'}
+
+${themePrompt ? `# 主题知识\n${themePrompt}\n\n` : ''}
 
 # 已确认的创作元素
 ${elementsPrompt}
