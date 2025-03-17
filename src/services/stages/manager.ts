@@ -20,6 +20,8 @@ export class StageManager {
   async determineNextStage(conversation: Conversation): Promise<ConversationStage> {
     const currentStage = conversation.currentStage;
     
+    console.log(`[StageManager] 开始判断阶段转换 - 当前阶段: ${currentStage}`);
+    
     // 检查是否应该转换到下一个阶段
     const shouldTransition = await this.detector.shouldTransition(
       conversation.messages,
@@ -27,10 +29,15 @@ export class StageManager {
       conversation.detectedTheme
     );
     
+    console.log(`[StageManager] 转换判断结果: ${shouldTransition ? '应该转换' : '保持当前阶段'}`);
+    
     if (shouldTransition) {
-      return this.getNextStage(currentStage);
+      const nextStage = this.getNextStage(currentStage);
+      console.log(`[StageManager] 确定下一阶段: ${currentStage} -> ${nextStage}`);
+      return nextStage;
     }
     
+    console.log(`[StageManager] 保持当前阶段: ${currentStage}`);
     return currentStage;
   }
   

@@ -2,11 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { StageManager } from '@/services/stages/manager';
 import { ConversationManager } from '@/services/conversation/manager';
 import { MemoryManager } from '@/services/memory/manager';
-import { ConversationStage, Message } from '@/types/conversation';
+import { ConversationStage, Message, Conversation } from '@/types/conversation';
 
 // 获取固定阶段
 function getFixedStage(): ConversationStage {
   return 'A';
+}
+
+// 获取阶段，优先使用传入的阶段，否则默认为'A'
+function getStage(stageOrConversation?: ConversationStage | Conversation): ConversationStage {
+  if (typeof stageOrConversation === 'string' && stageOrConversation as ConversationStage) {
+    return stageOrConversation as ConversationStage;
+  }
+  return (stageOrConversation as Conversation)?.currentStage || 'A';
 }
 
 export async function POST(req: NextRequest) {
@@ -49,7 +57,7 @@ export async function POST(req: NextRequest) {
           conversation = {
             id: conversationId,
             messages: messages,
-            currentStage: getFixedStage(), // 使用固定阶段，忽略请求中的stage
+            currentStage: getStage(stage as ConversationStage), // 使用传入的阶段
             createdAt: messages[0].timestamp,
             updatedAt: Date.now()
           };
@@ -59,7 +67,7 @@ export async function POST(req: NextRequest) {
           conversation = {
             id: conversationId,
             messages: [],
-            currentStage: getFixedStage(), // 使用固定阶段
+            currentStage: getStage(stage as ConversationStage), // 使用传入的阶段
             createdAt: Date.now(),
             updatedAt: Date.now()
           };
@@ -67,8 +75,8 @@ export async function POST(req: NextRequest) {
         }
         
         // 设置阶段 - 注意：我们仍然调用setStage，但实际上不会改变阶段
-        const updatedConversation = stageManager.setStage(conversation, getFixedStage());
-        console.log(`阶段已更新: ${getFixedStage()} - 会话ID: ${conversationId}`);
+        const updatedConversation = stageManager.setStage(conversation, getStage(stage as ConversationStage));
+        console.log(`阶段已更新: ${getStage(stage as ConversationStage)} - 会话ID: ${conversationId}`);
         
         return NextResponse.json({ 
           success: true, 

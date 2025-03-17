@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ConversationManager } from '@/services/conversation/manager';
-import { ConversationStage, Message } from '@/types/conversation';
+import { ConversationStage, Message, Conversation } from '@/types/conversation';
 import { MemoryManager } from '@/services/memory/manager';
 
 // 简化的阶段判断函数 - 始终返回固定阶段
 function getFixedStage(): ConversationStage {
   // 固定返回阶段A，暂时不实现阶段转换功能
   return 'A';
+}
+
+// 修改为使用会话的实际阶段
+function getStage(conversation?: Conversation): ConversationStage {
+  // 如果有会话对象，返回其当前阶段，否则默认为'A'
+  return conversation?.currentStage || 'A';
 }
 
 export async function POST(request: NextRequest) {
@@ -35,7 +41,7 @@ export async function POST(request: NextRequest) {
       conversation = { 
         id: conversationId, 
         messages: processedMessages,
-        currentStage: getFixedStage(), // 使用固定阶段
+        currentStage: getStage({ id: conversationId, messages: processedMessages } as Conversation), // 传递会话对象
         createdAt: processedMessages.length > 0 ? processedMessages[0].timestamp : Date.now(),
         updatedAt: Date.now()
       };

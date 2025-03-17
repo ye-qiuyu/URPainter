@@ -14,6 +14,9 @@ export class StageDetector {
     currentStage: ConversationStage,
     detectedTheme?: ThemeCategory
   ): Promise<boolean> {
+    console.log(`[StageDetector] 检查阶段转换条件 - 当前阶段: ${currentStage}, 主题: ${detectedTheme || '未检测'}`);
+    console.log(`[StageDetector] 消息数量: ${messages.length}`);
+    
     // 获取最近的几条消息
     const recentMessages = messages.slice(-5);
     
@@ -24,13 +27,19 @@ export class StageDetector {
       detectedTheme
     );
     
+    console.log(`[StageDetector] 发送阶段转换检测提示词`);
+    
     // 调用LLM判断是否应该转换
     const response = await this.ollamaService.chat([
       { role: 'user', content: prompt }
     ]);
     
     // 解析响应
-    return response.includes('TRANSITION_TO_NEXT_STAGE');
+    const shouldTransition = response.includes('TRANSITION_TO_NEXT_STAGE');
+    console.log(`[StageDetector] 检测结果: ${shouldTransition ? '应该转换' : '保持当前阶段'}`);
+    console.log(`[StageDetector] 原始响应: ${response.substring(0, 100)}...`);
+    
+    return shouldTransition;
   }
   
   // 构建阶段转换检测提示词

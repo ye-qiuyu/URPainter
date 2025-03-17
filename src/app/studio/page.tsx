@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import StudioLayout from '@/components/layout/StudioLayout';
 import { LLMSection, SDMSection } from '@/components/interaction';
 import { ToolBar } from '@/components/ui';
-import { Message } from '@/types/conversation';
+import { Message, ConversationStage } from '@/types/conversation';
 import DebugPanel from '@/components/debug/DebugPanel';
 import { ClientMemory } from '@/lib/memory';
 import { v4 as uuidv4 } from 'uuid';
@@ -21,6 +21,7 @@ export default function StudioPage() {
   const [imageLoading, setImageLoading] = useState(false);
   const [error, setError] = useState<string>('');
   const [isTyping, setIsTyping] = useState(false);
+  const [currentStage, setCurrentStage] = useState<ConversationStage>('A');
 
   // 初始化会话ID
   useEffect(() => {
@@ -104,6 +105,12 @@ export default function StudioPage() {
 
       // TODO: 根据AI响应决定是否需要生成图片
       
+      if (data.success) {
+        // 更新阶段信息
+        if (data.data.currentStage) {
+          setCurrentStage(data.data.currentStage);
+        }
+      }
     } catch (err) {
       console.error('对话过程中发生错误:', err);
       setError(err instanceof Error ? err.message : '未知错误');
@@ -158,6 +165,8 @@ export default function StudioPage() {
           <DebugPanel
             messages={messages}
             loading={loading}
+            conversationId={conversationId}
+            currentStage={currentStage}
             onSendMessage={handleSendMessage}
             onInputStateChange={setIsTyping}
             onClearConversation={handleClearConversation}

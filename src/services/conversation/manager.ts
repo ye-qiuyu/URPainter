@@ -184,7 +184,7 @@ export class ConversationManager {
     
     // 确定下一个阶段
     const previousStage = conversation.currentStage;
-    conversation.currentStage = this.determineNextStage(conversation);
+    conversation.currentStage = await this.determineNextStage(conversation);
     
     if (previousStage !== conversation.currentStage) {
       console.log(`阶段变更: ${previousStage} -> ${conversation.currentStage} - 会话ID: ${conversation.id}`);
@@ -199,35 +199,29 @@ export class ConversationManager {
    * @param conversation 当前会话
    * @returns 下一个会话阶段
    */
-  private determineNextStage(conversation: Conversation): ConversationStage {
-    // 暂时不实现阶段转换功能，始终返回固定阶段
-    return 'A';
-    
-    // 注释掉原有的阶段判断逻辑，以便后续恢复
-    /*
-    // 当前阶段
-    const currentStage = conversation.currentStage;
-    
-    // 消息数量
-    const messageCount = conversation.messages.length;
-    
-    // 简单的阶段推进逻辑
-    // 这里可以根据实际需求实现更复杂的逻辑
-    if (currentStage === 'A' && messageCount >= 4) {
-      return 'B';
-    } else if (currentStage === 'B' && messageCount >= 8) {
-      return 'C';
-    } else if (currentStage === 'C' && messageCount >= 12) {
-      return 'D';
-    } else if (currentStage === 'D' && messageCount >= 16) {
-      return 'E';
-    } else if (currentStage === 'E' && messageCount >= 20) {
-      return 'F';
+  private async determineNextStage(conversation: Conversation): Promise<ConversationStage> {
+    // 使用StageManager进行智能判断
+    try {
+      console.log(`[阶段判断] 开始判断 - 会话ID: ${conversation.id}, 当前阶段: ${conversation.currentStage}`);
+      console.log(`[阶段判断] 消息数量: ${conversation.messages.length}`);
+      
+      // 调用StageManager的determineNextStage方法
+      const nextStage = await this.stageManager.determineNextStage(conversation);
+      
+      if (nextStage !== conversation.currentStage) {
+        console.log(`[阶段判断] 阶段变更: ${conversation.currentStage} -> ${nextStage}`);
+        console.log(`[阶段判断] 变更原因: 满足阶段转换条件`);
+      } else {
+        console.log(`[阶段判断] 保持当前阶段: ${conversation.currentStage}`);
+      }
+      
+      return nextStage;
+    } catch (error) {
+      console.error('[阶段判断] 错误:', error);
+      // 出错时保持当前阶段
+      console.log(`[阶段判断] 由于错误，保持当前阶段: ${conversation.currentStage}`);
+      return conversation.currentStage;
     }
-    
-    // 默认保持当前阶段
-    return currentStage;
-    */
   }
   
   // 添加新方法：处理带有记忆的消息
@@ -283,7 +277,7 @@ export class ConversationManager {
       console.log(`收到AI响应 - 长度: ${aiResponse.length}`);
       
       // 确定下一阶段
-      const nextStage = this.determineNextStage(conversation);
+      const nextStage = await this.determineNextStage(conversation);
       if (nextStage !== conversation.currentStage) {
         console.log(`阶段变更: ${conversation.currentStage} -> ${nextStage}`);
         conversation.currentStage = nextStage;
