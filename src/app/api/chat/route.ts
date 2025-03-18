@@ -17,11 +17,12 @@ function getStage(conversation?: Conversation): ConversationStage {
 
 export async function POST(request: NextRequest) {
   try {
-    const { message, conversationId, messageHistory = [] } = await request.json();
+    const { message, conversationId, messageHistory = [], currentStage } = await request.json();
     console.log('收到聊天请求:', { 
       conversationId, 
       messagePreview: message.substring(0, 50),
-      historyLength: messageHistory.length
+      historyLength: messageHistory.length,
+      currentStage
     });
     
     const manager = ConversationManager.getInstance();
@@ -37,14 +38,15 @@ export async function POST(request: NextRequest) {
     let conversation;
     
     if (conversationId) {
-      // 使用处理后的消息构建会话对象
+      // 使用处理后的消息构建会话对象，优先使用传入的阶段信息
       conversation = { 
         id: conversationId, 
         messages: processedMessages,
-        currentStage: getStage({ id: conversationId, messages: processedMessages } as Conversation), // 传递会话对象
+        currentStage: currentStage || getStage({ id: conversationId, messages: processedMessages } as Conversation), // 优先使用传入的阶段
         createdAt: processedMessages.length > 0 ? processedMessages[0].timestamp : Date.now(),
         updatedAt: Date.now()
       };
+      console.log(`使用现有会话: ${conversationId}, 当前阶段: ${conversation.currentStage}`);
     } else {
       // 创建全新会话
       conversation = manager.createConversation();

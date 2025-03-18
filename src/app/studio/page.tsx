@@ -38,6 +38,13 @@ export default function StudioPage() {
       setMessages(storedMessages);
       console.log(`加载会话消息: ${storedMessages.length}条`);
     }
+    
+    // 加载会话阶段
+    const storedStage = ClientMemory.getStage(conversationId);
+    if (storedStage) {
+      setCurrentStage(storedStage);
+      console.log(`加载会话阶段: ${storedStage}`);
+    }
   }, [conversationId]);
 
   const handleSendMessage = async (message: string) => {
@@ -60,7 +67,7 @@ export default function StudioPage() {
       // 保存到会话存储
       ClientMemory.saveMessages(conversationId, updatedMessages);
 
-      // 发送请求到API，包含消息历史
+      // 发送请求到API，包含消息历史和当前阶段
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
@@ -69,7 +76,8 @@ export default function StudioPage() {
         body: JSON.stringify({ 
           message,
           conversationId,
-          messageHistory: updatedMessages
+          messageHistory: updatedMessages,
+          currentStage: currentStage // 添加当前阶段信息
         }),
       });
 
@@ -109,6 +117,9 @@ export default function StudioPage() {
         // 更新阶段信息
         if (data.data.currentStage) {
           setCurrentStage(data.data.currentStage);
+          // 保存阶段信息到本地存储
+          ClientMemory.saveStage(conversationId, data.data.currentStage);
+          console.log(`[前端] 阶段更新: ${currentStage} -> ${data.data.currentStage}`);
         }
       }
     } catch (err) {
@@ -130,6 +141,7 @@ export default function StudioPage() {
     const newConversationId = uuidv4();
     setConversationId(newConversationId);
     setMessages([]);
+    setCurrentStage('A'); // 重置阶段为A
     console.log(`创建新会话: ${newConversationId}`);
   };
 

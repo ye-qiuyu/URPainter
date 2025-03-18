@@ -1,4 +1,4 @@
-import { Message } from '@/types/conversation';
+import { Message, ConversationStage } from '@/types/conversation';
 
 /**
  * ClientMemory - 客户端记忆管理
@@ -71,6 +71,42 @@ export class ClientMemory {
   }
   
   /**
+   * 保存会话阶段信息
+   * 
+   * @param conversationId 会话ID
+   * @param stage 会话阶段
+   */
+  static saveStage(conversationId: string, stage: ConversationStage): void {
+    if (typeof window === 'undefined') return;
+    
+    try {
+      sessionStorage.setItem(`stage_${conversationId}`, stage);
+      console.log(`[ClientMemory] 保存阶段: ${stage} - 会话ID: ${conversationId}`);
+    } catch (e) {
+      console.error('保存阶段到SessionStorage失败:', e);
+    }
+  }
+  
+  /**
+   * 获取会话阶段信息
+   * 
+   * @param conversationId 会话ID
+   * @returns 会话阶段，如果不存在则返回'A'
+   */
+  static getStage(conversationId: string): ConversationStage {
+    if (typeof window === 'undefined') return 'A';
+    
+    try {
+      const stage = sessionStorage.getItem(`stage_${conversationId}`);
+      console.log(`[ClientMemory] 获取阶段: ${stage || 'A'} - 会话ID: ${conversationId}`);
+      return (stage as ConversationStage) || 'A';
+    } catch (e) {
+      console.error('从SessionStorage获取阶段失败:', e);
+      return 'A';
+    }
+  }
+  
+  /**
    * 清除特定会话的所有消息
    * 
    * @param conversationId 会话ID
@@ -79,6 +115,7 @@ export class ClientMemory {
     if (typeof window === 'undefined') return;
     
     sessionStorage.removeItem(`messages_${conversationId}`);
+    sessionStorage.removeItem(`stage_${conversationId}`);
   }
   
   /**
@@ -90,7 +127,7 @@ export class ClientMemory {
     // 遍历所有SessionStorage项
     for (let i = 0; i < sessionStorage.length; i++) {
       const key = sessionStorage.key(i);
-      if (key?.startsWith('messages_')) {
+      if (key?.startsWith('messages_') || key?.startsWith('stage_')) {
         sessionStorage.removeItem(key);
       }
     }
