@@ -12,7 +12,7 @@ import { ThemeDetector } from '../themes/detector';
 import { AITextService } from '../ai/aiTextService';
 import { PromptBuilderService } from '../prompt/builder';
 import { MemoryController } from '../memory/controller';
-
+ 
 export class ConversationManager {
   private static instance: ConversationManager;
   private memoryManager: MemoryManager;
@@ -253,6 +253,16 @@ export class ConversationManager {
         console.log(`检测到记忆相关查询，添加相关记忆到提示词`);
       }
       
+      // 合并传入的creativeElements和conversation中的creativeElements
+      const combinedCreativeElements = {
+        ...creativeElements,
+        ...(conversation.creativeElements || {})
+      };
+      
+      if (conversation.creativeElements && conversation.creativeElements.mainCharacter) {
+        console.log(`使用从会话中提取的主角: ${conversation.creativeElements.mainCharacter}`);
+      }
+      
       // 构建提示词
       const prompt = this.promptBuilder.buildConversationPrompt(
         userMessage,
@@ -260,7 +270,7 @@ export class ConversationManager {
         conversation.currentStage,
         detectedTheme,
         enhancedMemory,
-        creativeElements
+        combinedCreativeElements
       );
       
       // 添加详细的prompt日志

@@ -17,6 +17,10 @@ export interface Conversation {
   detectedTheme?: ThemeCategory;
   createdAt: number;
   updatedAt: number;
+  creativeElements?: {
+    mainCharacter?: string;
+    [key: string]: any;
+  };
 }
 
 export interface ConversationState {
