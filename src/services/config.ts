@@ -1,10 +1,10 @@
 export const AI_SERVICES = {
   OLLAMA: {
-    BASE_URL: 'http://10.0.1.88:11434',
+    BASE_URL: 'http://10.0.1.110:11434',
     MODEL: 'qwen2.5:32b',
   },
   COMFYUI: {
-    BASE_URL: 'http://10.0.1.88:8188',
+    BASE_URL: 'http://10.0.1.8:8188',
   },
 } as const;
 
