@@ -86,12 +86,18 @@ export async function POST(request: Request) {
     
     console.log('开始生成图片...');
     // 修改工作流中的提示词
-    if (workflowConfig && workflowConfig['6'] && workflowConfig['6'].inputs) {
+    if (workflowConfig && workflowConfig['7'] && workflowConfig['7'].inputs) {
       console.log('修改工作流中的提示词', { 
-        原提示词: workflowConfig['6'].inputs.text,
+        原提示词: workflowConfig['7'].inputs.text,
         新提示词: prompt 
       });
-      workflowConfig['6'].inputs.text = prompt;
+      workflowConfig['7'].inputs.text = prompt;
+    } else {
+      console.error('无法找到或修改工作流中的提示词节点:', {
+        workflowConfig: workflowConfig,
+        node7: workflowConfig?.['7'],
+        inputs: workflowConfig?.['7']?.inputs
+      });
     }
     
     // 设置超时

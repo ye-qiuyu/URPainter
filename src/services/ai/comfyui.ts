@@ -204,8 +204,14 @@ export class ComfyUIService {
       
       if (!response.ok) {
         const errorText = await response.text();
-        log('ComfyUI请求失败', { status: response.status, error: errorText });
-        throw new Error(`ComfyUI API 请求失败: ${response.status}, ${errorText}`);
+        log('ComfyUI请求失败', { 
+          status: response.status, 
+          statusText: response.statusText,
+          error: errorText,
+          url: `${this.baseUrl}/prompt`,
+          workflow: workflow
+        });
+        throw new Error(`ComfyUI API 请求失败: ${response.status} ${response.statusText}, ${errorText}`);
       }
       
       const data = await response.json();
