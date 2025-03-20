@@ -7,8 +7,8 @@ export class OllamaService {
   private useMockResponse: boolean;
 
   private constructor() {
-    this.baseUrl = process.env.NEXT_PUBLIC_OLLAMA_API_URL || 'http://10.0.1.88:11434';
-    this.model = process.env.NEXT_PUBLIC_OLLAMA_MODEL || 'qwen2.5:32b';
+    this.baseUrl = process.env.NEXT_PUBLIC_OLLAMA_API_URL || 'http://10.0.1.110:11434';
+    this.model = process.env.NEXT_PUBLIC_OLLAMA_MODEL || 'qwen2.5:14b';
     this.useMockResponse = process.env.NEXT_PUBLIC_USE_MOCK_AI === 'true';
     
     console.log('[OllamaService] 初始化', { 
