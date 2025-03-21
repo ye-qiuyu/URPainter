@@ -185,7 +185,44 @@ export async function POST(request: Request) {
           console.error('未找到CLIPTextEncode节点');
         }
       } else {
-        console.error('工作流不是ComfyUI界面格式，无法处理');
+        // 处理API格式的工作流
+        console.log('检测到API格式工作流，开始寻找提示词节点');
+        
+        // 在API格式中寻找CLIPTextEncode节点
+        for (const [nodeId, node] of Object.entries(workflowConfig)) {
+          if (typeof node === 'object' && node !== null && (node as any).class_type) {
+            const typedNode = node as any;
+            
+            // 检查是否是模型节点
+            if (typedNode.class_type === 'CheckpointLoaderSimple') {
+              modelNodeId = nodeId;
+              modelName = typedNode.inputs?.ckpt_name;
+              console.log('找到模型节点:', {
+                nodeId: modelNodeId,
+                modelName: modelName
+              });
+            }
+            
+            // 检查是否是提示词节点
+            if (typedNode.class_type === 'CLIPTextEncode') {
+              console.log('找到CLIPTextEncode节点:', {
+                nodeId,
+                原提示词: typedNode.inputs?.text || '未找到提示词'
+              });
+              
+              // 修改提示词节点的文本输入
+              if (typedNode.inputs && 'text' in typedNode.inputs) {
+                typedNode.inputs.text = prompt;
+                promptModified = true;
+                console.log('已修改API格式工作流的提示词为:', prompt);
+              }
+            }
+          }
+        }
+        
+        if (!promptModified) {
+          console.error('API工作流中未找到可以修改的提示词节点');
+        }
       }
     } catch (error) {
       console.error('修改工作流提示词失败:', error);

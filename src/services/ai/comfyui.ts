@@ -235,202 +235,54 @@ export class ComfyUIService {
   
   // 等待图像生成完成
   private async waitForImage(promptId: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-      log('创建WebSocket连接', { wsUrl: `${this.baseUrl.replace('http', 'ws')}/ws` });
-      
-      // 创建WebSocket连接
-      const ws = new WebSocket(`${this.baseUrl.replace('http', 'ws')}/ws`);
-      let imageUrl = '';
-      let lastProgress = 0;
-      let progressStableCount = 0;
-      let lastCheckTime = Date.now();
-      const checkInterval = 500; // 每0.5秒检查一次历史记录
-      let progressReached100 = false;
-      let progressReached100Time = 0;
-      
-      // 定期检查历史记录的函数
-      const checkHistory = async () => {
-        const now = Date.now();
-        // 如果进度已经达到100%，或者距离上次检查已经过了checkInterval时间
-        if (progressReached100 || now - lastCheckTime >= checkInterval) {
-          lastCheckTime = now;
-          log('检查历史记录...');
-          
-          try {
-            const response = await fetch(`${this.baseUrl}/history/${promptId}`);
-            const history = await response.json();
-            log('获取历史记录成功', { history: JSON.stringify(history).substring(0, 200) });
-            
-            // 查找输出节点的图像
-            if (history && history[promptId] && history[promptId].outputs) {
-              for (const nodeId in history[promptId].outputs) {
-                const nodeOutput = history[promptId].outputs[nodeId];
-                if (nodeOutput.images && nodeOutput.images.length > 0) {
-                  const image = nodeOutput.images[0];
-                  imageUrl = `${this.baseUrl}/view?filename=${image.filename}&subfolder=${image.subfolder || ''}`;
-                  log('从历史记录中找到图像URL', { imageUrl });
-                  
-                  ws.close();
-                  resolve(imageUrl);
-                  return true;
-                }
-              }
-            }
-            
-            // 如果进度已经达到100%，并且已经等待了一段时间，但仍然没有找到图像，则再等待一段时间后再次检查
-            if (progressReached100) {
-              const waitTime = now - progressReached100Time;
-              log('进度已达到100%，但未找到图像', { waitTime });
-              
-              // 如果等待时间超过3秒，则认为图像生成已完成，但没有找到图像
-              if (waitTime > 3000) {
-                log('等待超过3秒仍未找到图像，结束等待');
-                ws.close();
-                reject(new Error('未找到生成的图像'));
-                return true;
-              }
-            }
-            
-            log('历史记录中未找到图像');
-            return false;
-          } catch (error) {
-            log('获取历史记录失败', { error });
-            return false;
-          }
-        }
-        return false;
-      };
-      
-      ws.onopen = () => {
-        log('WebSocket连接已打开');
-      };
-      
-      ws.onmessage = async (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          log('收到WebSocket消息', { 
-            type: message.type, 
-            promptId: message.data?.prompt_id,
-            data: message.data ? JSON.stringify(message.data).substring(0, 200) : null
+    // 将WebSocket实现替换为HTTP轮询
+    log('使用HTTP轮询方式检查图像生成状态', { promptId });
+    
+    const maxAttempts = 30; // 最多尝试30次
+    const interval = 1000; // 每秒检查一次
+    
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        log(`检查历史记录 (${attempt + 1}/${maxAttempts})...`);
+        
+        // 请求历史记录API
+        const response = await fetch(`${this.baseUrl}/history/${promptId}`);
+        
+        if (!response.ok) {
+          log('获取历史记录失败', { 
+            status: response.status, 
+            statusText: response.statusText 
           });
+          // 继续尝试
+        } else {
+          const history = await response.json();
+          log('获取历史记录成功', { historyPreview: JSON.stringify(history).substring(0, 200) });
           
-          // 检查是否是进度消息
-          if (message.type === 'progress' && message.data && message.data.prompt_id === promptId) {
-            const progress = message.data.value || 0;
-            const max = message.data.max || 1;
-            const percentage = Math.round((progress / max) * 100);
-            
-            log('图像生成进度', { progress, max, percentage, lastProgress });
-            
-            // 检查进度是否已经达到100%
-            if (percentage === 100 && !progressReached100) {
-              progressReached100 = true;
-              progressReached100Time = Date.now();
-              log('进度达到100%，开始检查历史记录');
-              
-              // 进度达到100%时立即检查历史记录
-              const found = await checkHistory();
-              if (found) return;
-              
-              // 如果没有找到图像，设置一个定时器，每0.5秒检查一次历史记录
-              const checkInterval = setInterval(async () => {
-                const found = await checkHistory();
-                if (found) {
-                  clearInterval(checkInterval);
-                }
-              }, 500);
-              
-              // 3秒后如果仍然没有找到图像，清除定时器
-              setTimeout(() => {
-                clearInterval(checkInterval);
-              }, 3000);
-            }
-            
-            // 检测进度是否停滞（连续多次相同进度）
-            if (percentage === lastProgress) {
-              progressStableCount++;
-              log('进度停滞检测', { progressStableCount, percentage });
-              
-              // 如果进度停滞，检查历史记录
-              if (progressStableCount >= 3) {
-                await checkHistory();
-              }
-            } else {
-              lastProgress = percentage;
-              progressStableCount = 0;
-            }
-            
-            // 每收到进度消息也定期检查历史记录
-            await checkHistory();
-          }
-          
-          // 检查是否是我们的promptId的执行结果
-          if (message.type === 'executed' && message.data && message.data.prompt_id === promptId) {
-            log('收到执行结果', { outputs: JSON.stringify(message.data.output).substring(0, 200) });
-            
-            // 查找输出节点的图像
-            const outputs = message.data.output;
-            for (const nodeId in outputs) {
-              const nodeOutput = outputs[nodeId];
+          // 查找输出节点的图像
+          if (history && history[promptId] && history[promptId].outputs) {
+            for (const nodeId in history[promptId].outputs) {
+              const nodeOutput = history[promptId].outputs[nodeId];
               if (nodeOutput.images && nodeOutput.images.length > 0) {
                 const image = nodeOutput.images[0];
-                imageUrl = `${this.baseUrl}/view?filename=${image.filename}&subfolder=${image.subfolder || ''}`;
-                log('找到图像URL', { imageUrl });
-                break;
-              }
-            }
-            
-            // 如果在执行结果中找到了图像URL，立即返回
-            if (imageUrl) {
-              ws.close();
-              resolve(imageUrl);
-              return;
-            }
-            
-            // 否则检查历史记录
-            await checkHistory();
-          }
-          
-          // 检查是否执行完成
-          if (message.type === 'execution_complete' && message.data && message.data.prompt_id === promptId) {
-            log('执行完成', { hasImageUrl: !!imageUrl });
-            ws.close();
-            if (imageUrl) {
-              resolve(imageUrl);
-            } else {
-              // 如果没有找到图像URL，尝试从历史记录中获取
-              const found = await checkHistory();
-              if (!found) {
-                reject(new Error('未找到生成的图像'));
+                const imageUrl = `${this.baseUrl}/view?filename=${image.filename}&subfolder=${image.subfolder || ''}`;
+                log('从历史记录中找到图像URL', { imageUrl });
+                return imageUrl;
               }
             }
           }
-        } catch (error) {
-          log('解析WebSocket消息失败', { error, data: event.data });
         }
-      };
-      
-      ws.onerror = (error) => {
-        log('WebSocket错误', { error });
-        reject(error);
-      };
-      
-      ws.onclose = () => {
-        log('WebSocket连接已关闭');
-      };
-      
-      // 设置超时
-      setTimeout(async () => {
-        log('图像生成超时');
         
-        // 在超时前尝试从历史记录中获取图像
-        const found = await checkHistory();
-        if (!found) {
-          ws.close();
-          reject(new Error('图像生成超时'));
-        }
-      }, 20000); // 20秒超时
-    });
+        // 如果没有找到结果，等待一段时间后再次尝试
+        await new Promise(resolve => setTimeout(resolve, interval));
+      } catch (error) {
+        log('检查历史记录出错', { error });
+        // 出错时继续尝试
+        await new Promise(resolve => setTimeout(resolve, interval));
+      }
+    }
+    
+    // 如果多次尝试后仍未找到图像，则抛出错误
+    throw new Error('等待图像生成超时，未找到生成的图像');
   }
   
   // 从工作流中提取关键信息，用于调试
