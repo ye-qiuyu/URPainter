@@ -987,3 +987,11 @@ src/
 │   ├── conversation.ts          # 会话相关类型，定义Message、Conversation等核心类型
 │   ├── memory.ts                # 记忆相关类型，定义记忆数据结构
 │   └── [...其他类型定义]/       # 其他类型定义文件
+
+
+
+ComfyUI 服务通信改进
+多重通信机制：
+主要通过 WebSocket 实时获取生成结果
+失败时自动回退到 HTTP 轮询方式
+双重保障确保稳定获取所有生成图像

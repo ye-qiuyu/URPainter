@@ -9,6 +9,7 @@ import { Message, ConversationStage } from '@/types/conversation';
 import DebugPanel from '@/components/debug/DebugPanel';
 import { ClientMemory } from '@/lib/memory';
 import { v4 as uuidv4 } from 'uuid';
+import { AutoInitiator } from '@/services/conversation/autoInitiator';
 
 // 动态导入画布组件以避免SSR问题
 const Canvas = dynamic(() => import('@/components/canvas/Canvas'), { ssr: false });
@@ -45,7 +46,43 @@ export default function StudioPage() {
       setCurrentStage(storedStage);
       console.log(`加载会话阶段: ${storedStage}`);
     }
+
+    // 检查是否是新会话并且未初始化
+    if (conversationId && ClientMemory.isNewConversation(conversationId) && 
+        !ClientMemory.isConversationInitialized(conversationId)) {
+      // 自动发起对话
+      initializeConversation(conversationId);
+    }
   }, [conversationId]);
+
+  // 自动发起对话
+  const initializeConversation = async (convId: string) => {
+    try {
+      console.log(`自动初始化会话: ${convId}`);
+      setLoading(true);
+      
+      // 标记会话已初始化，防止重复初始化
+      ClientMemory.markConversationInitialized(convId);
+      
+      // 获取初始AI消息
+      const { data } = await AutoInitiator.sendInitialMessage(convId, currentStage);
+      
+      if (data && data.aiMessage) {
+        // 更新本地状态
+        const initialMessages = [data.aiMessage];
+        setMessages(initialMessages);
+        
+        // 保存到会话存储
+        ClientMemory.saveMessages(convId, initialMessages);
+        console.log('自动初始化会话成功:', data.aiMessage.content);
+      }
+    } catch (err) {
+      console.error('自动初始化会话失败:', err);
+      setError(err instanceof Error ? err.message : '未知错误');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSendMessage = async (message: string) => {
     try {
@@ -134,6 +171,9 @@ export default function StudioPage() {
   const handleClearConversation = () => {
     ClientMemory.clearConversation(conversationId);
     setMessages([]);
+    
+    // 在清除会话后自动发起新对话
+    initializeConversation(conversationId);
   };
 
   // 创建新会话
@@ -143,6 +183,9 @@ export default function StudioPage() {
     setMessages([]);
     setCurrentStage('A'); // 重置阶段为A
     console.log(`创建新会话: ${newConversationId}`);
+    
+    // 自动发起对话
+    initializeConversation(newConversationId);
   };
 
   return (

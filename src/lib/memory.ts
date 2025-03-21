@@ -152,4 +152,48 @@ export class ClientMemory {
     
     return ids;
   }
+
+  /**
+   * 检查是否为新会话（没有任何消息）
+   * 
+   * @param conversationId 会话ID
+   * @returns 如果会话没有任何消息则返回true
+   */
+  static isNewConversation(conversationId: string): boolean {
+    const messages = this.getMessages(conversationId);
+    return messages.length === 0;
+  }
+
+  /**
+   * 设置会话已初始化标记
+   * 防止在页面刷新或重新访问时重复发送自动消息
+   * 
+   * @param conversationId 会话ID
+   */
+  static markConversationInitialized(conversationId: string): void {
+    if (typeof window === 'undefined') return;
+    
+    try {
+      sessionStorage.setItem(`initialized_${conversationId}`, 'true');
+    } catch (e) {
+      console.error('标记会话初始化状态失败:', e);
+    }
+  }
+
+  /**
+   * 检查会话是否已初始化
+   * 
+   * @param conversationId 会话ID
+   * @returns 如果会话已初始化则返回true
+   */
+  static isConversationInitialized(conversationId: string): boolean {
+    if (typeof window === 'undefined') return false;
+    
+    try {
+      return sessionStorage.getItem(`initialized_${conversationId}`) === 'true';
+    } catch (e) {
+      console.error('检查会话初始化状态失败:', e);
+      return false;
+    }
+  }
 } 

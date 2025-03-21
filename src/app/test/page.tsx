@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { AutoInitiator } from '@/services/conversation/autoInitiator';
+import { v4 as uuidv4 } from 'uuid';
 
 export default function TestPage() {
   const [input, setInput] = useState('');
@@ -8,6 +10,36 @@ export default function TestPage() {
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [initialQuestion, setInitialQuestion] = useState('');
+  const [sessionId, setSessionId] = useState('');
+
+  // 页面加载时初始化会话
+  useEffect(() => {
+    if (!sessionId) {
+      const newSessionId = uuidv4();
+      setSessionId(newSessionId);
+      console.log('创建测试会话ID:', newSessionId);
+      
+      // 获取初始问题
+      generateInitialQuestion();
+    }
+  }, [sessionId]);
+
+  // 获取初始问题
+  const generateInitialQuestion = async () => {
+    try {
+      const initialMessage = AutoInitiator.generateInitialMessage();
+      setInitialQuestion(initialMessage.content);
+      console.log('生成初始问题:', initialMessage.content);
+    } catch (err) {
+      console.error('获取初始问题失败:', err);
+    }
+  };
+
+  // 重新生成初始问题
+  const regenerateQuestion = () => {
+    generateInitialQuestion();
+  };
 
   const testLLM = async () => {
     try {
@@ -103,6 +135,21 @@ export default function TestPage() {
       <h1 className="text-2xl font-bold mb-4">API 通信测试页面</h1>
       
       <div className="space-y-4">
+        {initialQuestion && (
+          <div className="p-4 bg-blue-50 rounded border border-blue-200">
+            <div className="flex justify-between">
+              <h2 className="font-medium mb-2">AI 初始问题：</h2>
+              <button
+                onClick={regenerateQuestion}
+                className="text-sm text-blue-500 hover:text-blue-700"
+              >
+                重新生成
+              </button>
+            </div>
+            <p className="italic">{initialQuestion}</p>
+          </div>
+        )}
+
         <div>
           <label className="block text-sm font-medium mb-2">
             测试输入
