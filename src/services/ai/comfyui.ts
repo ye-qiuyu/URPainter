@@ -235,8 +235,229 @@ export class ComfyUIService {
   
   // 等待图像生成完成
   private async waitForImage(promptId: string): Promise<string> {
-    // 将WebSocket实现替换为HTTP轮询
-    log('使用HTTP轮询方式检查图像生成状态', { promptId });
+    return new Promise((resolve, reject) => {
+      log('创建WebSocket连接', { wsUrl: `${this.baseUrl.replace('http', 'ws')}/ws` });
+      
+      // 创建WebSocket连接
+      const ws = new WebSocket(`${this.baseUrl.replace('http', 'ws')}/ws`);
+      let imageUrl = '';
+      let lastProgress = 0;
+      let progressStableCount = 0;
+      
+      // 设置连接超时
+      const connectionTimeout = setTimeout(() => {
+        log('WebSocket连接超时');
+        ws.close();
+        // 如果WebSocket连接失败，退回到HTTP轮询方式
+        this.fallbackToHttpPolling(promptId).then(resolve).catch(reject);
+      }, 5000); // 5秒连接超时
+      
+      // 定期检查历史记录的函数（作为辅助方式获取结果）
+      const checkHistory = async (): Promise<boolean> => {
+        try {
+          log('通过HTTP检查历史记录...');
+          const response = await fetch(`${this.baseUrl}/history/${promptId}`);
+          
+          if (!response.ok) {
+            log('获取历史记录失败', { 
+              status: response.status, 
+              statusText: response.statusText 
+            });
+            return false;
+          }
+          
+          const history = await response.json();
+          log('获取历史记录成功', { historyPreview: JSON.stringify(history).substring(0, 200) });
+          
+          // 查找输出节点的图像
+          if (history && history[promptId] && history[promptId].outputs) {
+            for (const nodeId in history[promptId].outputs) {
+              const nodeOutput = history[promptId].outputs[nodeId];
+              if (nodeOutput.images && nodeOutput.images.length > 0) {
+                const image = nodeOutput.images[0];
+                imageUrl = `${this.baseUrl}/view?filename=${image.filename}&subfolder=${image.subfolder || ''}`;
+                log('从历史记录中找到图像URL', { imageUrl });
+                
+                ws.close();
+                return true;
+              }
+            }
+          }
+          
+          return false;
+        } catch (error) {
+          log('检查历史记录出错', { error });
+          return false;
+        }
+      };
+      
+      ws.onopen = () => {
+        log('WebSocket连接已打开');
+        clearTimeout(connectionTimeout); // 连接成功，清除超时计时器
+      };
+      
+      ws.onmessage = async (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          log('收到WebSocket消息', { 
+            type: message.type, 
+            promptId: message.data?.prompt_id,
+            dataPreview: message.data ? JSON.stringify(message.data).substring(0, 200) : null
+          });
+          
+          // 检查是否是进度消息
+          if (message.type === 'progress' && message.data && message.data.prompt_id === promptId) {
+            const progress = message.data.value || 0;
+            const max = message.data.max || 1;
+            const percentage = Math.round((progress / max) * 100);
+            
+            log('图像生成进度', { progress, max, percentage, lastProgress });
+            
+            // 检测进度是否停滞（连续多次相同进度）
+            if (percentage === lastProgress) {
+              progressStableCount++;
+              
+              // 如果进度停滞，尝试检查历史记录
+              if (progressStableCount >= 3) {
+                const found = await checkHistory();
+                if (found) {
+                  resolve(imageUrl);
+                  return;
+                }
+              }
+            } else {
+              lastProgress = percentage;
+              progressStableCount = 0;
+            }
+            
+            // 如果进度到达100%，检查历史记录
+            if (percentage === 100) {
+              // 短暂延迟，等待图像生成完成
+              setTimeout(async () => {
+                const found = await checkHistory();
+                if (found) {
+                  resolve(imageUrl);
+                }
+              }, 500);
+            }
+          }
+          
+          // 检查是否是执行结果
+          if (message.type === 'executed' && message.data && message.data.prompt_id === promptId) {
+            log('收到执行结果', { outputs: JSON.stringify(message.data.output).substring(0, 200) });
+            
+            // 查找输出节点的图像
+            const outputs = message.data.output;
+            for (const nodeId in outputs) {
+              const nodeOutput = outputs[nodeId];
+              if (nodeOutput.images && nodeOutput.images.length > 0) {
+                const image = nodeOutput.images[0];
+                imageUrl = `${this.baseUrl}/view?filename=${image.filename}&subfolder=${image.subfolder || ''}`;
+                log('从执行结果中找到图像URL', { imageUrl });
+                break;
+              }
+            }
+            
+            // 如果在执行结果中找到了图像URL，立即返回
+            if (imageUrl) {
+              ws.close();
+              resolve(imageUrl);
+              return;
+            }
+            
+            // 否则检查历史记录
+            setTimeout(async () => {
+              const found = await checkHistory();
+              if (found) {
+                resolve(imageUrl);
+              }
+            }, 500);
+          }
+          
+          // 检查是否执行完成
+          if (message.type === 'execution_complete' && message.data && message.data.prompt_id === promptId) {
+            log('执行完成', { hasImageUrl: !!imageUrl });
+            
+            if (imageUrl) {
+              ws.close();
+              resolve(imageUrl);
+            } else {
+              // 如果没有找到图像URL，尝试从历史记录中获取
+              const found = await checkHistory();
+              if (found) {
+                resolve(imageUrl);
+              } else {
+                // 如果仍未找到，给最后一次机会，延迟检查
+                setTimeout(async () => {
+                  const found = await checkHistory();
+                  if (found) {
+                    resolve(imageUrl);
+                  } else {
+                    ws.close();
+                    reject(new Error('未找到生成的图像'));
+                  }
+                }, 1000);
+              }
+            }
+          }
+        } catch (error) {
+          log('解析WebSocket消息失败', { error, data: event.data });
+        }
+      };
+      
+      ws.onerror = (error) => {
+        log('WebSocket错误', { error });
+        clearTimeout(connectionTimeout);
+        
+        // WebSocket出错时，尝试使用HTTP轮询方式
+        this.fallbackToHttpPolling(promptId).then(resolve).catch(reject);
+      };
+      
+      ws.onclose = () => {
+        log('WebSocket连接已关闭');
+        clearTimeout(connectionTimeout);
+      };
+      
+      // 设置总体超时
+      const globalTimeout = setTimeout(async () => {
+        log('图像生成总体超时');
+        
+        // 在超时前尝试从历史记录中获取图像
+        const found = await checkHistory();
+        if (found) {
+          resolve(imageUrl);
+        } else {
+          ws.close();
+          reject(new Error('图像生成超时'));
+        }
+      }, 30000); // 30秒超时
+      
+      // 清理函数
+      const cleanup = () => {
+        clearTimeout(globalTimeout);
+        clearTimeout(connectionTimeout);
+      };
+      
+      // 添加到promise的then和catch中
+      resolve = ((originalResolve) => {
+        return (value) => {
+          cleanup();
+          originalResolve(value);
+        };
+      })(resolve);
+      
+      reject = ((originalReject) => {
+        return (reason) => {
+          cleanup();
+          originalReject(reason);
+        };
+      })(reject);
+    });
+  }
+  
+  // HTTP轮询回退方法
+  private async fallbackToHttpPolling(promptId: string): Promise<string> {
+    log('使用HTTP轮询方式作为备选方案', { promptId });
     
     const maxAttempts = 30; // 最多尝试30次
     const interval = 1000; // 每秒检查一次
