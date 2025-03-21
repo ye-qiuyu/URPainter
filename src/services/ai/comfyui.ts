@@ -179,18 +179,18 @@ export class ComfyUIService {
     try {
       log('开始生成图像', { prompt, negativePrompt, sessionId, baseUrl: this.baseUrl });
       
-      // 如果prompt是工作流配置，直接使用
+      // 只保留工作流配置处理的逻辑，删除创建新工作流的代码
       let workflow;
-      if (typeof prompt === 'object' && !Array.isArray(prompt) && prompt !== null && Object.keys(prompt).length > 0 && 
-          Object.values(prompt).some(node => typeof node === 'object' && node !== null && 'class_type' in node)) {
-        log('检测到prompt是工作流配置，直接使用');
+      if (typeof prompt === 'object' && !Array.isArray(prompt) && prompt !== null && Object.keys(prompt).length > 0) {
+        log('使用传入的工作流配置');
         workflow = prompt;
+        
+        // 从工作流中提取并打印节点信息，帮助调试
+        this.extractWorkflowInfo(workflow);
       } else {
-        // 否则构建工作流
-        log('构建新的工作流');
-        workflow = this.buildWorkflow(prompt, negativePrompt);
+        log('错误: 未提供有效的工作流配置', { prompt });
+        throw new Error('必须提供有效的工作流配置');
       }
-      log('使用的工作流', workflow);
       
       // 发送请求
       log('发送请求到ComfyUI', { url: `${this.baseUrl}/prompt` });
@@ -433,90 +433,76 @@ export class ComfyUIService {
     });
   }
   
-  // 构建ComfyUI工作流
-  private buildWorkflow(prompt: string | any, negativePrompt: string): any {
-    // 使用服务器上可用的模型名称
-    const modelName = "v1-5-pruned-emaonly-fp16.safetensors"; // 根据服务器上可用的模型
-    
-    // 确保prompt是字符串
-    if (typeof prompt === 'object') {
-      log('警告: prompt是对象，尝试提取正确的提示词', { prompt });
+  // 从工作流中提取关键信息，用于调试
+  private extractWorkflowInfo(workflow: any): void {
+    try {
+      log('分析工作流结构');
       
-      // 如果prompt是一个包含工作流的对象，尝试从中提取正面提示词
-      if (prompt && typeof prompt === 'object' && 
-          prompt['6'] && typeof prompt['6'] === 'object' && 
-          prompt['6'].inputs && typeof prompt['6'].inputs === 'object' && 
-          prompt['6'].inputs.text) {
-        prompt = String(prompt['6'].inputs.text);
-        log('从工作流对象中提取的提示词', { extractedPrompt: prompt });
-      } else {
-        // 如果无法提取，使用默认提示词
-        prompt = "a beautiful landscape";
-        log('无法从对象中提取提示词，使用默认值', { defaultPrompt: prompt });
+      // 如果工作流是ComfyUI UI中导出的格式，需要检查nodes数组
+      if (workflow.nodes && Array.isArray(workflow.nodes)) {
+        log('检测到ComfyUI界面导出的工作流格式');
+        
+        // 提取模型节点
+        const checkpointNodes = workflow.nodes.filter(
+          (node: any) => node.type === 'CheckpointLoaderSimple'
+        );
+        
+        if (checkpointNodes.length > 0) {
+          const modelNode = checkpointNodes[0];
+          const modelName = modelNode.widgets_values?.[0];
+          log('找到模型节点', { 
+            nodeId: modelNode.id, 
+            modelName: modelName
+          });
+        }
+        
+        // 提取提示词节点
+        const textNodes = workflow.nodes.filter(
+          (node: any) => node.type === 'CLIPTextEncode'
+        );
+        
+        for (const node of textNodes) {
+          const promptText = node.widgets_values?.[0];
+          log('找到提示词节点', { 
+            nodeId: node.id, 
+            promptText: promptText
+          });
+        }
       }
+      
+      // 如果没有nodes数组，可能是API格式的工作流，检查每个节点
+      else {
+        log('检测到API格式的工作流');
+        for (const [nodeId, node] of Object.entries(workflow)) {
+          if (typeof node === 'object' && node !== null) {
+            const typedNode = node as any;
+            if ('class_type' in typedNode) {
+              log(`节点 ${nodeId}:`, { 
+                类型: typedNode.class_type,
+                输入: typedNode.inputs 
+              });
+              
+              // 检查是否是模型加载节点
+              if (typedNode.class_type === 'CheckpointLoaderSimple' && typedNode.inputs?.ckpt_name) {
+                log('找到模型节点', { 
+                  nodeId: nodeId, 
+                  modelName: typedNode.inputs.ckpt_name 
+                });
+              }
+              
+              // 检查是否是提示词节点
+              if (typedNode.class_type === 'CLIPTextEncode' && typedNode.inputs?.text) {
+                log('找到提示词节点', { 
+                  nodeId: nodeId, 
+                  promptText: typedNode.inputs.text 
+                });
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      log('提取工作流信息失败', { error });
     }
-    
-    log('构建工作流', { prompt, negativePrompt, modelName });
-    
-    // 这里是一个简化的工作流，实际应用中可能需要更复杂的配置
-    return {
-      "3": {
-        "inputs": {
-          "seed": Math.floor(Math.random() * 1000000),
-          "steps": 20,
-          "cfg": 7,
-          "sampler_name": "euler",  // 使用服务器支持的采样器
-          "scheduler": "normal",
-          "denoise": 1,
-          "model": ["4", 0],
-          "positive": ["6", 0],
-          "negative": ["7", 0],
-          "latent_image": ["5", 0]
-        },
-        "class_type": "KSampler"
-      },
-      "4": {
-        "inputs": {
-          "ckpt_name": modelName
-        },
-        "class_type": "CheckpointLoaderSimple"
-      },
-      "5": {
-        "inputs": {
-          "width": 512,
-          "height": 512,
-          "batch_size": 1
-        },
-        "class_type": "EmptyLatentImage"
-      },
-      "6": {
-        "inputs": {
-          "text": prompt, // 确保这里是字符串
-          "clip": ["4", 1]
-        },
-        "class_type": "CLIPTextEncode"
-      },
-      "7": {
-        "inputs": {
-          "text": negativePrompt, // 确保这里是字符串
-          "clip": ["4", 1]
-        },
-        "class_type": "CLIPTextEncode"
-      },
-      "8": {
-        "inputs": {
-          "samples": ["3", 0],
-          "vae": ["4", 2]
-        },
-        "class_type": "VAEDecode"
-      },
-      "9": {
-        "inputs": {
-          "filename_prefix": "URPainter",
-          "images": ["8", 0]
-        },
-        "class_type": "SaveImage"
-      }
-    };
   }
 } 

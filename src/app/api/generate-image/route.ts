@@ -36,10 +36,38 @@ async function loadWorkflow(name: string) {
     
     try {
       const workflowConfig = JSON.parse(fileContent);
+      
+      // 提取工作流中的关键信息用于日志
+      let nodeInfo = {};
+      if (workflowConfig.nodes && Array.isArray(workflowConfig.nodes)) {
+        // ComfyUI界面格式
+        const modelNodes = workflowConfig.nodes.filter((node: any) => 
+          node.type === 'CheckpointLoaderSimple');
+        
+        if (modelNodes.length > 0) {
+          nodeInfo = {
+            modelName: modelNodes[0].widgets_values?.[0] || '未找到模型名称'
+          };
+        }
+        
+        const textNodes = workflowConfig.nodes.filter((node: any) => 
+          node.type === 'CLIPTextEncode');
+        
+        if (textNodes.length > 0) {
+          nodeInfo = {
+            ...nodeInfo,
+            promptNodeCount: textNodes.length,
+            promptNode1: textNodes[0].id,
+            promptText1: textNodes[0].widgets_values?.[0] || '未找到提示词'
+          };
+        }
+      }
+      
       console.log('工作流配置解析成功:', {
-        nodeCount: Object.keys(workflowConfig).length,
-        nodeTypes: Object.values(workflowConfig).map(node => (node as any).class_type)
+        nodeCount: workflowConfig.nodes ? workflowConfig.nodes.length : Object.keys(workflowConfig).length,
+        ...nodeInfo
       });
+      
       return workflowConfig;
     } catch (err) {
       console.error('工作流JSON解析失败:', err);
@@ -78,51 +106,136 @@ export async function POST(request: Request) {
     const workflowConfig = await loadWorkflow(workflow);
     console.log('工作流配置加载成功:', {
       configKeys: Object.keys(workflowConfig),
-      nodeCount: Object.keys(workflowConfig).length
+      nodeCount: workflowConfig.nodes ? workflowConfig.nodes.length : Object.keys(workflowConfig).length
     });
     
     console.log('初始化 ComfyUI 服务...');
     const comfyui = ComfyUIService.getInstance();
     
     console.log('开始生成图片...');
-    // 修改工作流中的提示词
-    if (workflowConfig && workflowConfig['7'] && workflowConfig['7'].inputs) {
-      console.log('修改工作流中的提示词', { 
-        原提示词: workflowConfig['7'].inputs.text,
-        新提示词: prompt 
-      });
-      workflowConfig['7'].inputs.text = prompt;
-    } else {
-      console.error('无法找到或修改工作流中的提示词节点:', {
-        workflowConfig: workflowConfig,
-        node7: workflowConfig?.['7'],
-        inputs: workflowConfig?.['7']?.inputs
-      });
+    
+    // 检查并修改工作流中的提示词
+    let positivePromptNode = null;
+    let negativePromptNode = null;
+    let modelNodeId = null;
+    let modelName = null;
+    let promptModified = false;
+    
+    try {
+      // ComfyUI界面导出的格式 (包含nodes数组)
+      if (workflowConfig.nodes && Array.isArray(workflowConfig.nodes)) {
+        console.log('检测到ComfyUI界面格式工作流');
+        
+        // 先提取模型信息
+        const modelNodes = workflowConfig.nodes.filter((node: any) => 
+          node.type === 'CheckpointLoaderSimple');
+        
+        if (modelNodes.length > 0) {
+          modelNodeId = modelNodes[0].id;
+          modelName = modelNodes[0].widgets_values?.[0];
+          console.log('找到模型节点:', {
+            nodeId: modelNodeId,
+            modelName: modelName
+          });
+        }
+        
+        // 查找CLIPTextEncode节点
+        const textNodes = workflowConfig.nodes.filter((node: any) => 
+          node.type === 'CLIPTextEncode');
+        
+        if (textNodes.length > 0) {
+          // 查找KSampler节点，了解哪个是正面提示词
+          const kSamplerNodes = workflowConfig.nodes.filter((node: any) => 
+            node.type === 'KSampler');
+          
+          if (kSamplerNodes.length > 0) {
+            const kSampler = kSamplerNodes[0];
+            // 找出正面提示词的输入链接
+            const positiveLink = kSampler.inputs.find((input: any) => 
+              input.name === 'positive' || 
+              input.label === 'positive' || 
+              input.localized_name === '正');
+            
+            if (positiveLink && positiveLink.link) {
+              // 查找链接对应的节点
+              const linkInfo = workflowConfig.links.find((link: any) => 
+                link[0] === positiveLink.link);
+              
+              if (linkInfo) {
+                const sourceNodeId = linkInfo[1];
+                // 找到对应的提示词节点
+                positivePromptNode = workflowConfig.nodes.find((node: any) => 
+                  node.id === sourceNodeId);
+                
+                if (positivePromptNode) {
+                  console.log('通过链接找到正面提示词节点:', {
+                    nodeId: positivePromptNode.id,
+                    原提示词: positivePromptNode.widgets_values[0]
+                  });
+                  
+                  // 修改提示词
+                  positivePromptNode.widgets_values[0] = prompt;
+                  promptModified = true;
+                  console.log('已修改提示词为:', prompt);
+                }
+              }
+            }
+          }
+        } else {
+          console.error('未找到CLIPTextEncode节点');
+        }
+      } else {
+        console.error('工作流不是ComfyUI界面格式，无法处理');
+      }
+    } catch (error) {
+      console.error('修改工作流提示词失败:', error);
     }
     
-    // 设置超时
-    const timeoutPromise = new Promise<string>((_, reject) => {
-      setTimeout(() => {
-        reject(new Error('图像生成请求超时'));
-      }, 20000); // 20秒超时
-    });
+    if (!promptModified) {
+      console.error('警告: 未能修改任何提示词节点');
+    }
     
     // 使用Promise.race确保请求不会无限等待
-    const imageUrl = await Promise.race([
-      comfyui.generateImage(
-        workflowConfig,
-        '', // 不使用negativePrompt参数，因为已经在工作流中设置了
-        sessionId || 'default-session'
-      ),
-      timeoutPromise
-    ]);
-    
-    console.log('图片生成成功:', imageUrl);
+    try {
+      const imageUrl = await Promise.race([
+        comfyui.generateImage(
+          workflowConfig,
+          '', // 不使用negativePrompt参数
+          sessionId || 'default-session'
+        ),
+        new Promise<string>((_, reject) => {
+          setTimeout(() => reject(new Error('图像生成请求超时')), 30000); // 30秒超时
+        })
+      ]);
+      
+      console.log('图片生成成功:', imageUrl);
 
-    return NextResponse.json({
-      success: true,
-      data: { imageUrl }
-    });
+      return NextResponse.json({
+        success: true,
+        data: { imageUrl }
+      });
+    } catch (error) {
+      console.error('图像生成失败:', error);
+      
+      // 检查是否是模型不存在的错误
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('ckpt_name') && errorMessage.includes('not in')) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `模型${modelName || ''}在当前ComfyUI环境中不可用。请在ComfyUI中检查可用模型列表。`,
+            details: { 
+              errorType: 'model_not_available',
+              modelName: modelName,
+              originalError: errorMessage
+            }
+          },
+          { status: 400 }
+        );
+      }
+      
+      throw error; // 重新抛出其他错误
+    }
   } catch (error) {
     console.error('图片生成过程中发生错误:', {
       error,
