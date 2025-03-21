@@ -876,3 +876,62 @@ ComfyUI 服务通信改进
 主要通过 WebSocket 实时获取生成结果
 失败时自动回退到 HTTP 轮询方式
 双重保障确保稳定获取所有生成图像
+
+
+src/
+  ├── app/                         # Next.js 应用主目录
+  │   ├── api/                     # API路由目录
+  │   │   ├── chat/route.ts        # 处理用户与AI的对话请求，接收用户消息，返回AI回复
+  │   │   ├── generate-image/route.ts # 处理图像生成，接收提示词，调用ComfyUI生成图像
+  │   │   ├── history/route.ts     # 获取对话历史记录的API接口
+  │   │   ├── stage/route.ts       # 处理对话阶段转换，确定当前阶段和下一阶段
+  │   │   ├── theme/route.ts       # 处理主题检测和获取，识别儿童感兴趣的主题
+  │   │   └── image/route.ts       # 处理图像获取和操作，如图像保存、查看等
+  │
+  ├── prompts/                     # 提示词系统目录
+  │   ├── builder.ts               # 提示词构建器，组装多层提示词架构为完整提示词
+  │   ├── index.ts                 # 提示词模块入口，导出所有提示词相关功能
+  │   ├── memory.ts                # 记忆相关提示词处理，格式化对话历史为提示词
+  │   ├── questionBank.ts          # 预设问题库，存储开启对话阶段的随机问题
+  │   ├── stages.ts                # 不同阶段的提示词模板，定义六个创作阶段的引导策略
+  │   ├── system.ts                # 系统基础提示词，定义AI助手的基本行为和风格
+  │   ├── themes.ts                # 不同主题的提示词和示例，如动物、太空等主题知识
+  │   └── types.ts                 # 提示词相关类型定义
+  │
+  ├── services/                    # 服务层目录
+  │   ├── ai/                      # AI服务目录
+  │   │   ├── aiImageService.ts    # AI图像服务抽象层，统一图像生成接口
+  │   │   ├── aiTextService.ts     # AI文本服务抽象层，统一文本生成接口
+  │   │   ├── comfyui.ts           # ComfyUI服务实现，通过HTTP和WebSocket与ComfyUI通信
+  │   │   ├── ollama.ts            # Ollama服务实现，通过HTTP与Ollama API通信
+  │   │   └── workflows/           # ComfyUI工作流配置目录，存储预设图像生成工作流
+  │   │
+  │   ├── conversation/            # 对话管理服务目录
+  │   │   ├── autoInitiator.ts     # 对话自动启动器，从问题库选择问题开启对话
+  │   │   └── manager.ts           # 对话管理器，核心业务逻辑控制中心，协调各服务
+  │   │
+  │   ├── memory/                  # 记忆服务目录
+  │   │   ├── controller.ts        # 记忆控制器，协调记忆策略和记忆检索
+  │   │   ├── formatter.ts         # 记忆格式化器，将消息处理为提示词可用格式
+  │   │   ├── manager.ts           # 记忆管理器，提供记忆处理和格式化的统一接口
+  │   │   └── storage.ts           # 记忆存储，管理消息的持久化和检索
+  │   │
+  │   ├── stages/                  # 阶段管理服务目录
+  │   │   ├── detector.ts          # 阶段检测器，分析对话判断阶段转换条件
+  │   │   └── manager.ts           # 阶段管理器，控制对话在A-F六个阶段间流转
+  │   │
+  │   ├── themes/                  # 主题管理服务目录
+  │   │   ├── detector.ts          # 主题检测器，从对话中识别创作主题类别
+  │   │   └── manager.ts           # 主题管理器，提供主题相关数据和逻辑
+  │   │
+  │   ├── config.ts                # 服务配置文件，存储服务层的全局配置
+  │   └── index.ts                 # 服务层入口文件，导出所有服务
+
+
+项目采用了分层架构，主要包括：
+API层：处理前端请求，协调后端服务
+提示词系统：构建多层次提示词，实现AI引导逻辑
+服务层：实现核心业务逻辑和外部服务通信
+状态管理层：管理应用状态
+类型系统：提供类型定义，确保代码健壮性
+其中，最核心的部分是对话管理器（ConversationManager）和阶段管理（StageManager），它们协调整个创作流程，实现从开启对话到完成创作的六个阶段流转。
