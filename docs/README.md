@@ -76,7 +76,7 @@ URPainter的创立源于一个重要观察：儿童天生具有未被社会规�
 
 ### 一、儿童友好性（最高优先级）
 1. **简单直观**
-   - 使用6-9岁儿童能理解的语言
+   - 使用4-6岁儿童能理解的语言
    - 界面操作简单明确
    - 避免复杂概念和专业术语
 
@@ -302,50 +302,28 @@ URPainter 采用 Web 端 MVP 方案，前端基于 Next.js，后端通过 API �
 
 🛠 技术架构
 
-**整体架构：**URPainter采用前后端分离的架构，前端为Web应用，后端包括本地部署的LLM服务（Ollama）和SDM服务（ComfyUI）。前端通过HTTP API与后端的LLM和SDM进行通信，实现对话生成和图像生成功能。架构示意：
-[ Web前端 (浏览器) ]
-       │
-       ├─ 与本地 Ollama (LLM) 通信（文本生成）
-       │   - REST API 请求，例如 /api/generate
-       │
-       └─ 与本地 ComfyUI (SDM) 通信（图像生成）
-           - REST API 请求，例如 /prompt, /history/{id}
+**整体架构：**URPainter采用前后端分离的架构，前端为Web应用，后端包括本地部署的LLM服务（Ollama）和SDM服务（ComfyUI）。前端通过HTTP API+websocket与后端的LLM和SDM进行通信，实现对话生成和图像生成功能。架构示意：
+
 前端开发
-	•	开发环境：Mac 上的VSCode
+	•	开发环境：Mac上的VSCode
 	•	开发语言：JavaScript/TypeScript
-	•	前端框架：React
+	•	前端框架：React next.js
 	•	运行平台：edge
 
 后端服务
-	•	LLM 服务（Ollama）：部署在Mac本地的Ollama LLM服务器，加载所需的大语言模型qwen2.5:32b。通过REST接口提供文本生成对话能力。
-	•	图像生成服务（ComfyUI）：部署在Mac本地的Stable Diffusion服务（ComfyUI），加载稳定扩散模型权重Stable Diffusion 1.5。通过REST接口提供基于提示词的图像生成能力，并支持远程访问。
+	•	LLM 服务（Ollama）：部署在Macmini电脑的Ollama LLM服务器，加载所需的大语言模型qwen2.5:14b。通过REST接口提供文本生成对话能力。
+	•	图像生成服务（ComfyUI）：部署在windows4090的Stable Diffusion服务（ComfyUI），。通过REST接口提供基于提示词的图像生成能力，并支持远程访问。
 	•	API 接口：前端通过HTTP请求访问后端服务的API：
 	•	Ollama 接口基础地址：http://<本地IP>:11434 （默认端口11434）
 	•	ComfyUI 接口基础地址：http://<本地IP>:8188 （默认端口8188）
 
-	**说明：**如果前端与后端部署在同一台机器上，可使用localhost作为地址；如后端在局域网内另一台Mac上，则使用其局域网IP（例如10.0.1.88）。上述端口号为默认设置，可根据需要在配置或启动命令中修改。
 
 硬件要求
-	•	开发设备：Apple Silicon Mac M3Pro用于运行前端; MacMini 64GB用于运行LLM以及Stable Diffusion推理。
-	•	存储空间：至少几十GB可用空间，用于存放LLM模型和SD模型文件（LLM模型可达数十GB，SD模型一般数GB）。
-	•	内存要求：根据LLM模型大小配置足够内存（例如运行30B级模型需数十GB内存）。
+	•	开发设备：Apple Silicon Mac M3Pro用于运行前端; MacMini 64GB用于运行LLM；windows4090用于Stable Diffusion推理。
 
 🧩 开发环境配置
-
-搭建URPainter的开发/运行环境需要配置LLM服务（Ollama）、SDM服务（ComfyUI）以及前端Web应用。请按照以下步骤安装必要的依赖和进行环境设置：
-
 LLM 环境（Ollama）
-	1.	**安装 Ollama：**在Mac上安装Ollama。本项目使用Ollama来本地部署大语言模型。可以通过Homebrew安装或从官方页面下载适用于macOS的安装包进行安装。
-	2.	**下载 LLM 模型：ollama run qwen2.5:32b
-	3.	**验证安装：ollama list
-
 SDM 环境（ComfyUI）
-	1.	**安装 Python 和 Git：**确保Mac上已安装Python 3.10+和Git。建议使用Python 3.10或3.11版本，并安装pip用于安装依赖。
-	2.	**获取 ComfyUI 程序：**从官方仓库获取ComfyUI。本项目使用ComfyUI作为Stable Diffusion后台，可通过git获取最新版
-	3.	**安装依赖：**进入ComfyUI目录后，安装其依赖库
-	4.	**准备模型文件：**下载Stable Diffusion模型权重文件（如v1-5-pruned-emaonly.safetensors对应Stable Diffusion 1.5）。将下载的模型文件放置到ComfyUI目录下的models/checkpoints/文件夹中。ComfyUI启动时会自动加载该目录中的模型。
-	5.	验证安装：ComfyUI将在本地启动一个Web界面（默认监听localhost:8188）。在浏览器中打开 http://localhost:8188 可访问ComfyUI界面。
-
 Web 前端环境
 	1.	**安装 Node.js：**在终端运行 node -v 验证版本。如果未安装，可从nodejs.org下载LTS版本。
 	2.	**获取前端代码：**将URPainter前端代码克隆或下载到本地。如果前端代码与后端在同一仓库中，请定位到前端项目目录（例如frontend/或web/子目录）；如果在单独仓库，请克隆相应仓库。
@@ -360,51 +338,16 @@ Web 前端环境
 启动后端服务
 	1.	**启动 Ollama 服务（LLM）：**在运行Ollama的Mac终端中执行：
 OLLAMA_HOST=0.0.0.0:11434 ollama serve
-该命令启动Ollama REST服务器，监听端口11434，并允许局域网其他设备访问（0.0.0.0表示监听所有网络接口）。如果只在本机浏览器使用且不需要远程访问，可将OLLAMA_HOST设置为localhost:11434。成功启动后，Ollama会在终端输出日志，指示服务已就绪。
 
 	2.	**启动 ComfyUI 服务（SDM）：**进入先前安装的ComfyUI目录，执行：
-python3 main.py --listen 0.0.0.0 --port 8188
-此命令启动ComfyUI的后端服务，监听端口8188，允许外部访问。同样地，--listen 0.0.0.0使其可被局域网访问；若无此需要可仅本地默认。首次启动时，ComfyUI会加载模型和初始化，控制台会显示加载模型的日志信息。当显示"Running on …:8188"即表示服务已启动成功。
-提示： 如果希望在后台运行ComfyUI（无需图形界面），可以在启动命令中加入--no-browser以避免自动打开界面。默认情况下，即使打开图形界面也不影响API调用。
 
 启动前端 Web 应用
 	3.	**启动前端服务器：**在前端项目目录执行启动命令。例如：
 npm run dev
-若配置正确，终端会显示前端开发服务器运行的地址（例如 http://localhost:3000）。打开浏览器访问该地址，即可加载URPainter的Web前端界面。
-如果前端无需构建（纯静态页面），也可以使用简易HTTP服务器提供页面：进入前端文件所在目录，运行：
-python3 -m http.server 8000
-然后在浏览器访问 http://localhost:8000 查看应用页面。请确保此时后端服务已启动，并且页面中的API地址指向正确的后端地址。
 
-	4.	**进入应用：**在浏览器中进入前端应用后，即可看到URPainter的界面（包含对话区和画布等）。此时后端服务应已经在运行状态。
 
-连接测试
 
-为确保前后端连接正常，建议在首次运行时进行以下API连通性测试：
-	•	测试 LLM API: 打开一个终端窗口，使用curl或其他HTTP工具调用Ollama的版本接口：
-curl http://localhost:11434/api/version
-正常情况下将返回JSON，例如：{"version":"0.0.13"}
-这表示Ollama服务正常响应。同样，可以测试一下生成接口（确保已加载模型）：
-curl -X POST http://localhost:11434/api/generate \
-     -H "Content-Type: application/json" \
-     -d '{"model": "qwen2.5:32b", "prompt": "Hello"}'
-如果模型较大，此请求可能几秒后返回一段JSON，包含模型输出文本。如果能得到合理的回复或至少"done": true的JSON结果，说明LLM服务工作正常。
-	•	测试 SDM API: 使用curl调用ComfyUI的队列接口以测试连通：
-curl http://localhost:8188/queue
-若服务正常，将返回当前任务队列状态的JSON，例如：
-{"queue_running": false, "queue_pending": 0}
-这表示ComfyUI服务已就绪且当前没有任务。如果需要进一步测试图像生成，可通过调用ComfyUI的/prompt接口提交一个简单任务。例如，假定ComfyUI加载了默认Stable Diffusion模型，可以尝试：
-curl -X POST http://localhost:8188/prompt \
-     -H "Content-Type: application/json" \
-     -d '{"prompt": "A colorful butterfly"}'
-该请求会返回一个prompt_id，表示生成任务已加入队列。随后，可每隔1-2秒调用：
-curl http://localhost:8188/history/<prompt_id>
-查看任务状态。当返回JSON中包含生成的输出文件名时（如"outputs": ["output_01234.png"]），表示图像生成完毕。可以通过浏览器访问 http://localhost:8188/view?filename=output_01234.png&type=output 获取生成的图片。（实际文件名请以返回结果为准。）
 
-	•	**前端联调：**当以上测试通过后，在前端应用界面中进行一次完整交互：例如，在对话框中输入提示，观察LLM回复，然后根据LLM引导让应用请求生成图像。查看浏览器开发者控制台的网络请求，如果LLM (/api/generate)和SDM (/prompt等)请求都返回了有效结果且应用行为符合预期，则整个系统各部分已成功集成。
-
-	**注意：**如果前端和后端不在同一主机或同一端口，浏览器出于安全策略可能阻止跨域请求。为解决此问题，可以在后端服务开启跨域支持（如通过代理或在响应中添加Access-Control-Allow-Origin: *头）。目前Ollama和ComfyUI未内置CORS设置，可考虑使用开发代理或在前端开发服务器配置代理，以确保API调用通畅。
-
-完成以上步骤后，URPainter应用的各部分就全部启动并互联成功。接下来，您可以通过Web前端与URPainter进行交互——LLM会通过对话引导孩子构思创意，SDM根据指令生成图像元素，创造完整的绘画体验。
 
 🔗 API 说明
 
@@ -416,7 +359,7 @@ Ollama 的服务接口前缀为http://<ollama_host>:11434/api/。常用的API包
 	•	POST /api/generate – 文本续写/对话生成接口。
 **功能：**根据提供的提示词（prompt）生成下一段文本。
 **请求体：**JSON格式，包括以下字段：
-	•	model (字符串，必需)：指定使用的模型名称（及标签），如 "llama2:7b" 或 "DeepSeek:latest"。
+	•	model (字符串，必需)：指定使用的模型名称（及标签），如 "qwen2.5:314b" 
 	•	prompt (字符串，必需)：要提供给模型的提示内容。例如："讲一个关于太空探索的故事。".
 	•	system (字符串，可选)：系统消息，用于预设模型行为的指令。若提供则会覆盖模型默认的system提示。
 	•	options (对象，可选)：模型生成参数，如温度temperature、最大长度max_length等，具体参数取决于所用模型支持的选项。
@@ -464,6 +407,7 @@ response = requests.post(url, json=payload)
 result = response.json()
 print(result["response"])  # 输出模型回答的文本
 SDM 接口（ComfyUI）
+
 
 ComfyUI 提供了一组HTTP接口用于控制Stable Diffusion模型生成图像。服务接口前缀为http://<comfyui_host>:8188/。主要API如下：
 	•	POST /prompt – 提交图像生成任务。
@@ -603,6 +547,7 @@ else:
 **示例说明：**上述代码首先向LLM请求一个儿童绘画主题创意，然后将得到的文本作为Stable Diffusion的提示词提交给SDM。最后轮询获取图片文件名，并下载该图片保存为本地文件（output.png）。在实际应用中，最后一步可以将图像内容直接发送给前端页面展示，无需保存为文件。
 
 请根据实际模型名称和部署情况调整llm_payload中的model字段，以及是否需要对LLM输出的文本进行翻译或加工以匹配SDM模型语言（如Stable Diffusion通常对英文描述理解更佳）。另外，注意控制实际应用中的等待逻辑和错误处理。
+
 
 🔮 未来扩展计划
 
@@ -923,70 +868,6 @@ c特定话题层 ≈ 部分[context] + 部分[exemplar]
 d上下文记忆层 ≈ 部分[context]
 e当前输入层 - 这是最终的用户输入
 
-
-
-
-src/
-├── app/                         # Next.js应用程序目录
-│   ├── api/                     # API路由
-│   │   ├── chat/                # 聊天API
-│   │   │   └── route.ts         # 聊天处理，核心对话API端点，处理用户消息和返回AI响应
-│   │   ├── generate-image/      # 图像生成API
-│   │   │   └── route.ts         # 处理图像生成请求，调用AIImageService生成绘画内容
-│   │   ├── history/             # 历史记录API
-│   │   │   └── route.ts         # 获取会话历史记录的API端点
-│   │   ├── image/               # 图像服务API
-│   │   │   └── route.ts         # 处理图像相关请求，如获取或删除图像
-│   │   ├── stage/               # 阶段管理API
-│   │   │   └── route.ts         # 处理创作阶段的转换和查询
-│   │   └── theme/               # 主题管理API
-│   │       └── route.ts         # 检测和管理创作主题的API端点
-│   └── [...页面目录]/           # Next.js页面路由
-├── components/                  # React组件
-│   └── [...组件目录]/           # 各种UI组件
-├── lib/                         # 工具函数和辅助库
-│   └── [...工具模块]/           # 通用工具函数
-├── prompts/                     # 提示词系统
-│   ├── builder.ts               # 提示词构建器，组装各层次提示词成完整提示词模板
-│   ├── index.ts                 # 提示词模块入口，导出关键组件
-│   ├── memory.ts                # 记忆提示词格式化，将消息历史和创意元素格式化为提示词
-│   ├── stages.ts                # 阶段提示词定义，包含不同创作阶段(A-F)的提示词模板
-│   ├── system.ts                # 系统基础提示词，定义AI角色和行为准则
-│   ├── themes.ts                # 主题提示词，包含不同主题的知识库和示例
-│   └── types.ts                 # 提示词相关的类型定义
-├── services/                    # 服务层
-│   ├── ai/                      # AI服务
-│   │   ├── aiImageService.ts    # 图像生成服务，封装与ComfyUI的交互
-│   │   ├── aiTextService.ts     # 文本生成服务，封装与Ollama的交互
-│   │   ├── comfyui.ts           # ComfyUI服务，处理与ComfyUI的API通信
-│   │   ├── ollama.ts            # Ollama服务，处理与Ollama的API通信
-│   │   └── workflows/           # ComfyUI工作流定义
-│   ├── config.ts                # 服务配置，包含API端点等配置信息
-│   ├── conversation/            # 会话管理
-│   │   └── manager.ts           # 会话管理器，管理对话流程、状态转换和消息处理
-│   ├── dialogue/                # 对话管理(可能是早期设计)
-│   │   └── manager.ts           # 对话管理器，处理对话流程和消息
-│   ├── index.ts                 # 服务层入口，统一导出各服务组件
-│   ├── memory/                  # 记忆管理系统
-│   │   ├── controller.ts        # 记忆控制器，实现核心记忆处理逻辑，包括窗口策略和记忆检索
-│   │   ├── formatter.ts         # 记忆格式化器，负责格式化记忆和提取创意元素
-│   │   ├── manager.ts           # 记忆管理器，对外统一接口，协调记忆系统各组件
-│   │   └── storage.ts           # 记忆存储，验证和处理消息，不再负责实际存储功能
-│   ├── prompt/                  # 提示词服务
-│   │   └── builder.ts           # 提示词构建服务，提供构建对话提示词和图像生成提示词的功能
-│   ├── stages/                  # 阶段管理
-│   │   ├── detector.ts          # 阶段检测器，分析对话确定当前阶段
-│   │   └── manager.ts           # 阶段管理器，处理创作阶段的转换和状态
-│   └── themes/                  # 主题管理
-│       ├── detector.ts          # 主题检测器，从对话中识别可能的创作主题
-│       └── manager.ts           # 主题管理器，管理主题信息和状态
-├── store/                       # 状态管理
-│   ├── conversation.ts          # 会话状态管理，使用React Context管理会话状态
-│   └── memory.ts                # 记忆状态管理，使用SessionStorage存储会话记忆
-├── types/                       # TypeScript类型定义
-│   ├── conversation.ts          # 会话相关类型，定义Message、Conversation等核心类型
-│   ├── memory.ts                # 记忆相关类型，定义记忆数据结构
-│   └── [...其他类型定义]/       # 其他类型定义文件
 
 
 
