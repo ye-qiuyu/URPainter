@@ -1,7 +1,7 @@
 {
   "3": {
     "inputs": {
-      "seed": 909751031672930,
+      "seed": 313436273431072,
       "steps": 20,
       "cfg": 8,
       "sampler_name": "euler",
@@ -42,7 +42,7 @@
     "inputs": {
       "width": 512,
       "height": 512,
-      "batch_size": 1
+      "batch_size": 3
     },
     "class_type": "EmptyLatentImage",
     "_meta": {
@@ -51,7 +51,7 @@
   },
   "6": {
     "inputs": {
-      "text": "beautiful scenery nature glass bottle landscape, , purple galaxy bottle,",
+      "text": "cat on a hat",
       "clip": [
         "4",
         1

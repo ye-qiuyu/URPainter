@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 export default function TestPage() {
   const [input, setInput] = useState('');
   const [response, setResponse] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -46,7 +46,7 @@ export default function TestPage() {
     try {
       setLoading(true);
       setError('');
-      setImageUrl('');
+      setImageUrls([]);
       
       console.log('开始发送图片生成请求...');
       const startTime = Date.now();
@@ -79,14 +79,16 @@ export default function TestPage() {
       const data = await response.json();
       console.log('收到服务器响应:', data);
       
-      if (data.success && data.data && data.data.imageUrl) {
-        console.log('设置图片URL:', data.data.imageUrl);
+      if (data.success && data.data && data.data.imageUrls && data.data.imageUrls.length > 0) {
+        console.log('设置图片URLs:', data.data.imageUrls);
         // 添加时间戳防止缓存
-        const imageUrlWithTimestamp = `${data.data.imageUrl}${data.data.imageUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
-        setImageUrl(imageUrlWithTimestamp);
+        const urlsWithTimestamp = data.data.imageUrls.map((url: string) => 
+          `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`
+        );
+        setImageUrls(urlsWithTimestamp);
       } else {
-        console.error('响应中没有有效的图片URL:', data);
-        throw new Error('服务器返回的数据中没有图片URL');
+        console.error('响应中没有有效的图片URLs:', data);
+        throw new Error('服务器返回的数据中没有图片URLs');
       }
     } catch (err) {
       console.error('请求过程中发生错误:', err);
@@ -145,10 +147,17 @@ export default function TestPage() {
           </div>
         )}
 
-        {imageUrl && (
+        {imageUrls.length > 0 && (
           <div className="p-4 bg-gray-100 rounded">
-            <h2 className="font-medium mb-2">生成的图片：</h2>
-            <img src={imageUrl} alt="生成的图片" className="max-w-full rounded" />
+            <h2 className="font-medium mb-2">生成的图片（{imageUrls.length}张）：</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {imageUrls.map((url, index) => (
+                <div key={index} className="border rounded p-2">
+                  <p className="text-sm text-gray-500 mb-1">图片 {index + 1}</p>
+                  <img src={url} alt={`生成的图片 ${index + 1}`} className="max-w-full rounded" />
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>

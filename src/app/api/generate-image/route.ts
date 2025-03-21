@@ -234,22 +234,22 @@ export async function POST(request: Request) {
     
     // 使用Promise.race确保请求不会无限等待
     try {
-      const imageUrl = await Promise.race([
+      const imageUrls = await Promise.race([
         comfyui.generateImage(
           workflowConfig,
           '', // 不使用negativePrompt参数
           sessionId || 'default-session'
         ),
-        new Promise<string>((_, reject) => {
+        new Promise<string[]>((_, reject) => {
           setTimeout(() => reject(new Error('图像生成请求超时')), 30000); // 30秒超时
         })
       ]);
       
-      console.log('图片生成成功:', imageUrl);
+      console.log('图片生成成功:', imageUrls);
 
       return NextResponse.json({
         success: true,
-        data: { imageUrl }
+        data: { imageUrls }
       });
     } catch (error) {
       console.error('图像生成失败:', error);
