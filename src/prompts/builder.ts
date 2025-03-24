@@ -59,10 +59,11 @@ export class PromptBuilder {
     const exemplar = state.themeDetected ? 
       getExamplarByThemeAndStage(state.themeDetected, state.currentStage) : '';
     
-    // 如果是A阶段且需要总结，添加特殊指令
+    // 只在B1阶段添加特殊指令
     let specialInstructions = '';
-    if (state.currentStage === 'B' && creativeElements?.mainCharacter) {
-      console.log(`[PromptBuilder] 在B阶段添加主角引导指令: ${creativeElements.mainCharacter}`);
+    
+    if (state.currentStage === 'B1' && creativeElements?.mainCharacter) {
+      console.log(`[PromptBuilder] 在B1阶段添加主角引导指令: ${creativeElements.mainCharacter}`);
       let theme = creativeElements.theme || '小朋友提到的故事';
       
       specialInstructions = `
@@ -73,7 +74,7 @@ export class PromptBuilder {
 3. 提出关于主角外观、颜色、特点等方面的具体问题
 4. 保持简短友好的语气，适合4-6岁儿童理解
 
-请注意：这是B阶段的引导指令，必须执行这个总结和主角引导。
+请注意：这是主角创作阶段的首次回复，必须以总结句式开头并引导用户描述主角。
 </special_instruction>
       `.trim();
     }

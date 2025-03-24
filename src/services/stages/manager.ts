@@ -25,6 +25,19 @@ export class StageManager {
     
     console.log(`[StageManager] 开始判断阶段转换 - 当前阶段: ${currentStage}`);
     
+    // 特殊处理：如果当前是B1阶段且已有回复，自动转到B2
+    if (currentStage === 'B1') {
+      // 获取最近的AI消息
+      const recentMessages = conversation.messages.slice(-4); // 最近4条消息
+      const aiMessages = recentMessages.filter(m => m.role === 'assistant');
+      
+      // 检查是否存在包含总结句式的AI消息
+      if (aiMessages.length > 0 && aiMessages.some(m => m.content.includes('那么，我们就来画'))) {
+        console.log(`[StageManager] 从B1自动转换到B2阶段`);
+        return 'B2';
+      }
+    }
+    
     // 检查是否应该转换到下一个阶段
     const shouldTransition = await this.detector.shouldTransition(
       conversation.messages,
@@ -34,11 +47,9 @@ export class StageManager {
     
     console.log(`[StageManager] 转换判断结果: ${shouldTransition ? '应该转换' : '保持当前阶段'}`);
     
-    // 如果从A阶段应该转换到B阶段
+    // 如果从A阶段应该转换到B1阶段
     if (shouldTransition && currentStage === 'A') {
-      const nextStage = this.getNextStage(currentStage);
-      
-      console.log(`[StageManager] 阶段A满足转换条件，准备转换到阶段B`);
+      console.log(`[StageManager] 阶段A满足转换条件，准备转换到阶段B1`);
       
       // 提取主角信息
       if (!conversation.creativeElements) {
@@ -54,9 +65,15 @@ export class StageManager {
         this.fallbackMainCharacterExtraction(conversation);
       }
       
-      // 直接返回下一阶段
-      console.log(`[StageManager] 正式转换到阶段B`);
-      return nextStage;
+      // 直接返回B1阶段
+      console.log(`[StageManager] 正式转换到阶段B1`);
+      return 'B1';
+    }
+    
+    // 从B2阶段转换到C阶段
+    if (shouldTransition && currentStage === 'B2') {
+      console.log(`[StageManager] 阶段B2满足转换条件，准备转换到阶段C`);
+      return 'C';
     }
     
     // 其他阶段正常转换
@@ -206,7 +223,7 @@ ${dialogHistory}
   
   // 获取下一个阶段
   private getNextStage(currentStage: ConversationStage): ConversationStage {
-    const stageSequence: ConversationStage[] = ['A', 'B', 'C', 'D', 'E'];
+    const stageSequence: ConversationStage[] = ['A', 'B1', 'B2', 'C', 'D', 'E'];
     const currentIndex = stageSequence.indexOf(currentStage);
     
     if (currentIndex < 0 || currentIndex >= stageSequence.length - 1) {
@@ -220,7 +237,8 @@ ${dialogHistory}
   getStageDescription(stage: ConversationStage): string {
     const descriptions: Record<ConversationStage, string> = {
       'A': '引导主题确立',
-      'B': '绘制主角元素',
+      'B1': '绘制主角元素(首次)',
+      'B2': '绘制主角元素(细节)',
       'C': '联想阶段',
       'D': '绘制其他元素',
       'E': '完成创作'

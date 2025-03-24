@@ -67,7 +67,14 @@ export class StageDetector {
         `;
         break;
       
-      case 'B':
+      case 'B1':
+        // B1阶段自动转换到B2，不需要通过检测来转换
+        transitionConditions = `
+1. 这是B1阶段（首次进入主角创作），一旦回复了总结语句，会自动转到B2阶段，无需进行检测。
+        `;
+        break;
+      
+      case 'B2':
         transitionConditions = `
 1. 用户是否描述了主角的至少2-3个特征？（如外观、颜色、大小、特殊能力等）
 2. 我们是否已经收集了足够多的细节来生成一个丰富的主角形象？
