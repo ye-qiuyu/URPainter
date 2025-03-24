@@ -141,6 +141,13 @@ export default function StudioPage() {
         timestamp: Date.now(),
       };
       
+      // 检查是否包含总结语句
+      if (currentStage === 'A' && 
+          data.data.creativeElements?.needSummary === false) {
+        const hasSummary = data.data.aiResponse.includes('那么，我们就来画');
+        console.log(`[AIResponse] 检查响应是否包含总结语句: ${hasSummary}`);
+      }
+      
       // 更新本地状态
       const finalMessages = [...updatedMessages, aiMessage];
       setMessages(finalMessages);

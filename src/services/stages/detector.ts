@@ -48,6 +48,11 @@ export class StageDetector {
     currentStage: ConversationStage,
     detectedTheme?: ThemeCategory
   ): string {
+    console.log(`[StageDetector] 检查阶段${currentStage}转换条件，消息总数: ${messages.length}`);
+    if (messages.length >= 2) {
+      console.log(`[StageDetector] 最近消息: "${messages.slice(-2).map(m => `${m.role}: ${m.content}`).join(' -> ')}"`);
+    }
+    
     // 根据当前阶段构建特定的转换条件
     let transitionConditions = '';
     
@@ -56,10 +61,9 @@ export class StageDetector {
         transitionConditions = `
 1. 对话是否已经形成明确的故事/绘画主题？
 2. 是否已经确定了故事的主要内容（谁在做什么）？
-3. AI是否已经用"那么，我们就来画XXX"这样的方式总结了主题？
-4. 儿童是否表示同意或积极反馈？
+3. 儿童是否表示了充分的兴趣或积极反馈？
 
-注意：应该形成的是一个完整的故事场景，而不仅仅是一个单独的物体或角色。例如"宇航员在月球上探险"而不仅仅是"宇航员"。仅当以上所有条件都满足时才转换阶段。
+注意：应该形成的是一个完整的故事场景，而不仅仅是一个单独的物体或角色。例如"宇航员在月球上探险"而不仅仅是"宇航员"。
         `;
         break;
       

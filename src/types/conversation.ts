@@ -19,6 +19,9 @@ export interface Conversation {
   updatedAt: number;
   creativeElements?: {
     mainCharacter?: string;
+    theme?: string;
+    supportElements?: string[];
+    needSummary?: boolean;
     [key: string]: any;
   };
 }

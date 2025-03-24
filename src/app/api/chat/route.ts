@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
     };
     
     // 更新会话对象
-    const updatedConversation = {
+    const updatedConversation: Conversation = {
       ...conversation,
       messages: [...processedMessages, {
         id: Date.now().toString(),
@@ -112,6 +112,7 @@ export async function POST(request: NextRequest) {
         aiResponse: responseText,
         aiMessage,
         currentStage: updatedConversation.currentStage,
+        creativeElements: updatedConversation.creativeElements,
         _debug: undefined as any
       }
     };
