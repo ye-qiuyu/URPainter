@@ -242,6 +242,14 @@ export class ConversationManager {
         console.log(`主题检测结果: ${detectedTheme || '未检测到'}`);
       }
       
+      // 先确定下一阶段（这一步移到提示词构建前）
+      const previousStage = conversation.currentStage;
+      const nextStage = await this.determineNextStage(conversation);
+      if (nextStage !== previousStage) {
+        console.log(`阶段变更: ${previousStage} -> ${nextStage}`);
+        conversation.currentStage = nextStage;
+      }
+      
       // 检查是否是记忆相关的查询
       const memoryController = MemoryController.getInstance();
       const relevantMemory = memoryController.retrieveRelevantMemory(conversation.messages, userMessage);
@@ -253,8 +261,8 @@ export class ConversationManager {
         console.log(`检测到记忆相关查询，添加相关记忆到提示词`);
       }
       
-      // 合并传入的creativeElements和conversation中的creativeElements
-      const combinedCreativeElements = {
+      // 创建一个可修改的副本
+      const mutableCreativeElements = {
         ...creativeElements,
         ...(conversation.creativeElements || {})
       };
@@ -263,14 +271,30 @@ export class ConversationManager {
         console.log(`使用从会话中提取的主角: ${conversation.creativeElements.mainCharacter}`);
       }
       
-      // 构建提示词
+      // 将可能修改过的 creativeElements 更新回 conversation 对象
+      if (!conversation.creativeElements) {
+        conversation.creativeElements = {};
+      }
+      
+      // 确保主角和主题信息保留
+      if (mutableCreativeElements.mainCharacter && !conversation.creativeElements.mainCharacter) {
+        conversation.creativeElements.mainCharacter = mutableCreativeElements.mainCharacter;
+        console.log(`[Manager] 保存主角信息: ${conversation.creativeElements.mainCharacter}`);
+      }
+      
+      if (mutableCreativeElements.theme && !conversation.creativeElements.theme) {
+        conversation.creativeElements.theme = mutableCreativeElements.theme;
+        console.log(`[Manager] 保存主题信息: ${conversation.creativeElements.theme}`);
+      }
+      
+      // 构建提示词（使用可能已更新的阶段）
       const prompt = this.promptBuilder.buildConversationPrompt(
         userMessage,
         conversation.id,
-        conversation.currentStage,
+        conversation.currentStage,  // 使用可能已更新的阶段
         detectedTheme,
         enhancedMemory,
-        combinedCreativeElements
+        mutableCreativeElements
       );
       
       // 添加详细的prompt日志
@@ -285,13 +309,6 @@ export class ConversationManager {
       console.log('请求AI响应...');
       const aiResponse = await this.aiTextService.getResponse(prompt);
       console.log(`收到AI响应 - 长度: ${aiResponse.length}`);
-      
-      // 确定下一阶段
-      const nextStage = await this.determineNextStage(conversation);
-      if (nextStage !== conversation.currentStage) {
-        console.log(`阶段变更: ${conversation.currentStage} -> ${nextStage}`);
-        conversation.currentStage = nextStage;
-      }
       
       // 在开发环境中，将prompt添加到响应中，以便前端可以在控制台查看
       if (process.env.NODE_ENV === 'development') {

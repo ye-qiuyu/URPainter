@@ -34,43 +34,29 @@ export class StageManager {
     
     console.log(`[StageManager] 转换判断结果: ${shouldTransition ? '应该转换' : '保持当前阶段'}`);
     
-    // 如果从A阶段应该转换到B阶段，但还没有总结语句
+    // 如果从A阶段应该转换到B阶段
     if (shouldTransition && currentStage === 'A') {
       const nextStage = this.getNextStage(currentStage);
       
-      // 检查是否已经有过总结标记
-      if (!conversation.creativeElements || conversation.creativeElements.needSummary === undefined) {
-        console.log(`[StageManager] 阶段A满足转换条件，但需要先执行总结`);
-        
-        // 标记需要在下一次AI响应中生成总结语句
-        if (!conversation.creativeElements) {
-          conversation.creativeElements = {};
-        }
-        conversation.creativeElements.needSummary = true;
-        
-        // 先提取主角，但不立即转换阶段
-        try {
-          await this.extractCreativeElementsWithLLM(conversation);
-          console.log(`[StageManager] 主角提取成功，下一次AI响应将包含总结语句`);
-        } catch (error) {
-          console.error('[StageManager] 提取创作元素失败:', error);
-          this.fallbackMainCharacterExtraction(conversation);
-        }
-        
-        // 返回当前阶段，等待下一次交互再转换
-        return currentStage;
+      console.log(`[StageManager] 阶段A满足转换条件，准备转换到阶段B`);
+      
+      // 提取主角信息
+      if (!conversation.creativeElements) {
+        conversation.creativeElements = {};
       }
-      // 如果已经添加过总结标记，且标记为false（表示已经生成了总结）
-      else if (conversation.creativeElements.needSummary === false) {
-        console.log(`[StageManager] 已生成总结语句，现在正式转换到阶段B`);
-        delete conversation.creativeElements.needSummary;
-        return nextStage;
+      
+      // 提取主角，并直接转换阶段
+      try {
+        await this.extractCreativeElementsWithLLM(conversation);
+        console.log(`[StageManager] 主角提取成功: ${conversation.creativeElements.mainCharacter || '未提取到'}`);
+      } catch (error) {
+        console.error('[StageManager] 提取创作元素失败:', error);
+        this.fallbackMainCharacterExtraction(conversation);
       }
-      // 如果标记为true，表示正在等待生成总结，继续保持A阶段
-      else {
-        console.log(`[StageManager] 等待生成总结语句，保持阶段A`);
-        return currentStage;
-      }
+      
+      // 直接返回下一阶段
+      console.log(`[StageManager] 正式转换到阶段B`);
+      return nextStage;
     }
     
     // 其他阶段正常转换

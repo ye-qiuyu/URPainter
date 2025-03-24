@@ -61,23 +61,21 @@ export class PromptBuilder {
     
     // 如果是A阶段且需要总结，添加特殊指令
     let specialInstructions = '';
-    if (state.currentStage === 'A' && creativeElements?.needSummary === true) {
-      console.log(`[PromptBuilder] 添加总结指令到提示词`);
-      let theme = creativeElements.theme || '用户提到的主题';
+    if (state.currentStage === 'B' && creativeElements?.mainCharacter) {
+      console.log(`[PromptBuilder] 在B阶段添加主角引导指令: ${creativeElements.mainCharacter}`);
+      let theme = creativeElements.theme || '小朋友提到的故事';
       
       specialInstructions = `
 <special_instruction>
-用户的故事主题已经足够具体。在你的回复中，你必须遵循以下要求：
-1. 使用"那么，我们就来画[主题]"的形式对对话进行总结
-2. 引导用户描述主角的特征和细节
-3. 主角可能是"${creativeElements.mainCharacter || '未知'}"，但让用户确认并描述更多细节
+在回复开头，请确保遵循以下要求：
+1. 以"那么，我们就来画[主题]"的方式总结要画的内容
+2. 引导用户描述主角("${creativeElements.mainCharacter || '主角'}")的细节特征
+3. 提出关于主角外观、颜色、特点等方面的具体问题
+4. 保持简短友好的语气，适合4-6岁儿童理解
 
-这是非常重要的指令，你必须在回复中执行这个总结。
+请注意：这是B阶段的引导指令，必须执行这个总结和主角引导。
 </special_instruction>
       `.trim();
-      
-      // 标记为已经添加了总结指令，下次不需要再添加
-      creativeElements.needSummary = false;
     }
     
     // 3. 组合最终提示词
