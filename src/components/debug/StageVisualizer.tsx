@@ -8,12 +8,11 @@ interface StageVisualizerProps {
 
 // 阶段描述映射
 const stageDescriptions: Record<ConversationStage, string> = {
-  'A': '开启对话',
-  'B': '确定创作主题',
-  'C': '绘制主角元素',
-  'D': '联想阶段',
-  'E': '绘制其他元素',
-  'F': '完成创作'
+  'A': '引导主题确立',
+  'B': '绘制主角元素',
+  'C': '联想阶段',
+  'D': '绘制其他元素',
+  'E': '完成创作'
 };
 
 // 阶段颜色映射
@@ -22,8 +21,7 @@ const stageColors: Record<ConversationStage, string> = {
   'B': 'bg-purple-500',
   'C': 'bg-pink-500',
   'D': 'bg-yellow-500',
-  'E': 'bg-green-500',
-  'F': 'bg-red-500'
+  'E': 'bg-green-500'
 };
 
 /**
@@ -44,7 +42,7 @@ export const StageVisualizer: React.FC<StageVisualizerProps> = ({
       
       {/* 阶段流程图 */}
       <div className="flex items-center justify-between w-full mb-4">
-        {(['A', 'B', 'C', 'D', 'E', 'F'] as ConversationStage[]).map((stage, index) => {
+        {(['A', 'B', 'C', 'D', 'E'] as ConversationStage[]).map((stage, index) => {
           const isActive = stage === currentStage;
           const isPast = stage.charCodeAt(0) < currentStage.charCodeAt(0);
           
@@ -66,7 +64,7 @@ export const StageVisualizer: React.FC<StageVisualizerProps> = ({
               </div>
               
               {/* 连接线 */}
-              {index < 5 && (
+              {index < 4 && (
                 <div 
                   className={`
                     h-0.5 w-4 flex-grow mx-1
@@ -90,12 +88,11 @@ export const StageVisualizer: React.FC<StageVisualizerProps> = ({
       <div className="mt-4 text-sm text-gray-600 w-full">
         <h4 className="font-semibold mb-1">阶段说明:</h4>
         <ul className="list-disc pl-5">
-          <li>A - 开启对话：了解用户兴趣和创作意向</li>
-          <li>B - 确定创作主题：确定具体的创作主题和方向</li>
-          <li>C - 绘制主角元素：设计和描述主要角色或元素</li>
-          <li>D - 联想阶段：通过联想扩展创意和元素</li>
-          <li>E - 绘制其他元素：添加背景、环境和辅助元素</li>
-          <li>F - 完成创作：完善细节，完成最终创作</li>
+          <li>A - 引导主题确立：从简单问题引导儿童逐步形成具体、有趣的绘画主题</li>
+          <li>B - 绘制主角元素：帮助儿童完成画面主角的创作，收集主角特征</li>
+          <li>C - 联想阶段：通过联想扩展创意和元素，丰富画面内容</li>
+          <li>D - 绘制其他元素：添加背景、环境和辅助元素，完善场景</li>
+          <li>E - 完成创作：帮助儿童总结创作内容，完成作品命名</li>
         </ul>
       </div>
     </div>

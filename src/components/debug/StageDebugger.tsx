@@ -129,7 +129,7 @@ export const StageDebugger: React.FC<StageDebuggerProps> = ({
           <div className="mb-4 p-3 bg-gray-50 rounded-md">
             <h4 className="font-medium mb-2">手动设置阶段</h4>
             <div className="flex flex-wrap gap-2">
-              {(['A', 'B', 'C', 'D', 'E', 'F'] as ConversationStage[]).map(stage => (
+              {(['A', 'B', 'C', 'D', 'E'] as ConversationStage[]).map(stage => (
                 <button
                   key={stage}
                   onClick={() => triggerStageTransition(stage)}
