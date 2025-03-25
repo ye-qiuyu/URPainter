@@ -118,10 +118,14 @@ export function getExamplarByThemeAndStage(theme: ThemeCategory, stage: Conversa
     }
   };
   
-  // 特殊处理：B1和B2都使用原来的B阶段示例
+  // 特殊处理：B1和B2都使用原来的B阶段示例，C1和C2都使用原来的C阶段示例
   let lookupStage = stage;
   if (stage === 'B1' || stage === 'B2') {
     lookupStage = 'B' as unknown as ConversationStage; // 类型转换，确保类型安全
+  } else if (stage === 'C1' || stage === 'C2') {
+    lookupStage = 'C' as unknown as ConversationStage; // 使用原来的C阶段示例
+  } else if (stage === 'D') {
+    lookupStage = 'E' as unknown as ConversationStage; // 使用原来的E阶段示例
   }
   
   return examples[theme]?.[lookupStage] || '';

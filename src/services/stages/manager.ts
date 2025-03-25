@@ -38,6 +38,24 @@ export class StageManager {
       }
     }
     
+    // 特殊处理：如果当前是C2阶段且用户已表达想添加新元素，自动转到C1
+    if (currentStage === 'C2') {
+      // 获取最近的用户消息
+      const recentMessages = conversation.messages.slice(-3); // 最近3条消息
+      const userMessages = recentMessages.filter(m => m.role === 'user');
+      
+      // 简单检查是否表达了想添加更多元素的意图
+      if (userMessages.length > 0) {
+        const lastUserMsg = userMessages[userMessages.length - 1].content.toLowerCase();
+        if (lastUserMsg.includes('还想') || lastUserMsg.includes('再加') || 
+            lastUserMsg.includes('添加') || lastUserMsg.includes('其他') || 
+            lastUserMsg.includes('新的') || lastUserMsg.includes('还要')) {
+          console.log(`[StageManager] 用户表达想添加新元素，从C2转回C1阶段`);
+          return 'C1';
+        }
+      }
+    }
+    
     // 检查是否应该转换到下一个阶段
     const shouldTransition = await this.detector.shouldTransition(
       conversation.messages,
@@ -70,10 +88,36 @@ export class StageManager {
       return 'B1';
     }
     
-    // 从B2阶段转换到C阶段
+    // 从B2阶段转换到C1阶段
     if (shouldTransition && currentStage === 'B2') {
-      console.log(`[StageManager] 阶段B2满足转换条件，准备转换到阶段C`);
-      return 'C';
+      console.log(`[StageManager] 阶段B2满足转换条件，准备转换到阶段C1`);
+      return 'C1';
+    }
+    
+    // 从C1阶段转换到C2阶段
+    if (shouldTransition && currentStage === 'C1') {
+      console.log(`[StageManager] 阶段C1满足转换条件，准备转换到阶段C2`);
+      return 'C2';
+    }
+    
+    // 从C2阶段转换到D阶段 (如果不是返回C1)
+    if (shouldTransition && currentStage === 'C2') {
+      // 检查是否表达了完成的意图
+      const recentMessages = conversation.messages.slice(-3);
+      const userMessages = recentMessages.filter(m => m.role === 'user');
+      
+      if (userMessages.length > 0) {
+        const lastUserMsg = userMessages[userMessages.length - 1].content.toLowerCase();
+        if (lastUserMsg.includes('完成') || lastUserMsg.includes('就这些') || 
+            lastUserMsg.includes('好了') || lastUserMsg.includes('结束') || 
+            lastUserMsg.includes('满意')) {
+          console.log(`[StageManager] 用户表达完成意图，从C2转到D阶段`);
+          return 'D';
+        } else {
+          console.log(`[StageManager] 默认从C2转回C1阶段继续添加元素`);
+          return 'C1';
+        }
+      }
     }
     
     // 其他阶段正常转换
@@ -223,7 +267,7 @@ ${dialogHistory}
   
   // 获取下一个阶段
   private getNextStage(currentStage: ConversationStage): ConversationStage {
-    const stageSequence: ConversationStage[] = ['A', 'B1', 'B2', 'C', 'D', 'E'];
+    const stageSequence: ConversationStage[] = ['A', 'B1', 'B2', 'C1', 'C2', 'D'];
     const currentIndex = stageSequence.indexOf(currentStage);
     
     if (currentIndex < 0 || currentIndex >= stageSequence.length - 1) {
@@ -239,9 +283,9 @@ ${dialogHistory}
       'A': '引导主题确立',
       'B1': '绘制主角元素(首次)',
       'B2': '绘制主角元素(细节)',
-      'C': '联想阶段',
-      'D': '绘制其他元素',
-      'E': '完成创作'
+      'C1': '联想阶段',
+      'C2': '绘制其他元素',
+      'D': '完成创作'
     };
     
     return descriptions[stage] || '未知阶段';

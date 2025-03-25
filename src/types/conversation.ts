@@ -1,4 +1,4 @@
-export type ConversationStage = 'A' | 'B1' | 'B2' | 'C' | 'D' | 'E';
+export type ConversationStage = 'A' | 'B1' | 'B2' | 'C1' | 'C2' | 'D';
 export type ThemeCategory = 'SPACE' | 'ANIMALS' | 'FANTASY' | 'VEHICLES' | 'DEFAULT';
 
 export interface Message {
