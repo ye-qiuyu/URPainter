@@ -10,6 +10,7 @@ import DebugPanel from '@/components/debug/DebugPanel';
 import { ClientMemory } from '@/lib/memory';
 import { v4 as uuidv4 } from 'uuid';
 import { AutoInitiator } from '@/services/conversation/autoInitiator';
+import { initializeMemorySystem } from '@/services/memory';
 
 // 动态导入画布组件以避免SSR问题
 const Canvas = dynamic(() => import('@/components/canvas/Canvas'), { ssr: false });
@@ -23,9 +24,35 @@ export default function StudioPage() {
   const [error, setError] = useState<string>('');
   const [isTyping, setIsTyping] = useState(false);
   const [currentStage, setCurrentStage] = useState<ConversationStage>('A');
+  const [memoryInitialized, setMemoryInitialized] = useState(false);
+
+  // 初始化记忆系统
+  useEffect(() => {
+    async function initMemory() {
+      try {
+        console.log('初始化记忆系统...');
+        await initializeMemorySystem();
+        setMemoryInitialized(true);
+        console.log('记忆系统初始化完成');
+      } catch (error) {
+        console.error('记忆系统初始化失败:', error);
+      }
+    }
+    
+    initMemory();
+    
+    // 清理函数 - 当组件卸载时
+    return () => {
+      console.log('组件卸载，记忆系统将重置');
+      // 这里暂时不需要额外清理，因为浏览器刷新会自动清空内存中的记忆
+    };
+  }, []); // 空依赖数组确保只在组件挂载时执行一次
 
   // 初始化会话ID
   useEffect(() => {
+    // 只有在记忆系统初始化完成后才进行会话初始化
+    if (!memoryInitialized) return;
+    
     // 如果没有会话ID，创建一个新的
     if (!conversationId) {
       const newConversationId = uuidv4();
@@ -53,7 +80,7 @@ export default function StudioPage() {
       // 自动发起对话
       initializeConversation(conversationId);
     }
-  }, [conversationId]);
+  }, [conversationId, memoryInitialized]); // 依赖添加memoryInitialized
 
   // 自动发起对话
   const initializeConversation = async (convId: string) => {

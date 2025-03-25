@@ -6,6 +6,7 @@ import {
   ThemeCategory 
 } from '@/types/conversation';
 import { MemoryManager } from '../memory/manager';
+import { StagedMemory, StageTransitionTrigger } from '../memory/index';
 import { StageManager } from '../stages/manager';
 import { ThemeManager } from '../themes/manager';
 import { ThemeDetector } from '../themes/detector';
@@ -21,6 +22,8 @@ export class ConversationManager {
   private themeDetector: ThemeDetector;
   private aiTextService: AITextService;
   private promptBuilder: PromptBuilderService;
+  private stagedMemory: StagedMemory;
+  private stageTransitionTrigger: StageTransitionTrigger;
   
   private constructor() {
     this.memoryManager = MemoryManager.getInstance();
@@ -29,6 +32,8 @@ export class ConversationManager {
     this.themeDetector = new ThemeDetector();
     this.aiTextService = AITextService.getInstance();
     this.promptBuilder = PromptBuilderService.getInstance();
+    this.stagedMemory = StagedMemory.getInstance();
+    this.stageTransitionTrigger = StageTransitionTrigger.getInstance();
   }
   
   public static getInstance(): ConversationManager {
@@ -205,14 +210,27 @@ export class ConversationManager {
       console.log(`[阶段判断] 开始判断 - 会话ID: ${conversation.id}, 当前阶段: ${conversation.currentStage}`);
       console.log(`[阶段判断] 消息数量: ${conversation.messages.length}`);
       
+      // 记录当前阶段
+      const currentStage = conversation.currentStage;
+      
       // 调用StageManager的determineNextStage方法
       const nextStage = await this.stageManager.determineNextStage(conversation);
       
-      if (nextStage !== conversation.currentStage) {
-        console.log(`[阶段判断] 阶段变更: ${conversation.currentStage} -> ${nextStage}`);
+      if (nextStage !== currentStage) {
+        console.log(`[阶段判断] 阶段变更: ${currentStage} -> ${nextStage}`);
         console.log(`[阶段判断] 变更原因: 满足阶段转换条件`);
+        
+        // 触发阶段转换记忆处理
+        const previousStage = conversation.currentStage;
+        // 先更新会话的阶段
+        conversation.currentStage = nextStage;
+        
+        // 然后触发记忆总结
+        await this.stageTransitionTrigger.checkAndHandleTransition(conversation);
+        
+        console.log(`[阶段判断] 阶段记忆处理完成: ${previousStage} -> ${nextStage}`);
       } else {
-        console.log(`[阶段判断] 保持当前阶段: ${conversation.currentStage}`);
+        console.log(`[阶段判断] 保持当前阶段: ${currentStage}`);
       }
       
       return nextStage;
@@ -224,7 +242,7 @@ export class ConversationManager {
     }
   }
   
-  // 添加新方法：处理带有记忆的消息
+  // 修改处理带有记忆的消息方法，集成分阶段记忆
   async processMessageWithMemory(
     conversation: Conversation, 
     userMessage: string,
@@ -249,6 +267,9 @@ export class ConversationManager {
       if (nextStage !== previousStage) {
         console.log(`阶段变更: ${previousStage} -> ${nextStage}`);
         conversation.currentStage = nextStage;
+        
+        // 当阶段发生变化时，获取阶段记忆总结
+        console.log(`获取阶段${previousStage}的记忆总结`);
       }
       
       // 创建一个可修改的副本
@@ -275,6 +296,21 @@ export class ConversationManager {
       if (mutableCreativeElements.theme && !conversation.creativeElements.theme) {
         conversation.creativeElements.theme = mutableCreativeElements.theme;
         console.log(`[Manager] 保存主题信息: ${conversation.creativeElements.theme}`);
+      }
+      
+      // 获取阶段记忆总结
+      let stagedMemories = '';
+      try {
+        stagedMemories = this.stagedMemory.formatMemoriesForPrompt(conversation.id);
+        console.log(`[Manager] 获取到阶段记忆总结: ${stagedMemories.length > 0 ? '是' : '否'}`);
+      } catch (error) {
+        console.error('[Manager] 获取阶段记忆总结失败:', error);
+      }
+      
+      // 如果有阶段记忆，合并到formattedMemory中
+      if (stagedMemories && stagedMemories.length > 0 && stagedMemories !== '尚无历史记忆') {
+        formattedMemory = `${formattedMemory}\n\n## 阶段记忆总结\n${stagedMemories}`;
+        console.log(`[Manager] 添加阶段记忆到提示词`);
       }
       
       // 检查是否是记忆相关的查询

@@ -38,9 +38,22 @@ export class PromptBuilder {
     
     // 处理消息/记忆参数
     let messagesPrompt: string;
+    let stagedMemories: string = '';
+    
     if (typeof messagesOrFormattedMemory === 'string') {
-      // 如果是字符串，直接使用
-      messagesPrompt = messagesOrFormattedMemory;
+      // 如果是字符串，检查是否包含阶段记忆总结部分
+      const memoryContent = messagesOrFormattedMemory;
+      
+      // 提取阶段记忆总结（如果存在）
+      const stagedMemoryMatch = memoryContent.match(/## 阶段记忆总结\n([\s\S]+?)(?=\n\n|$)/);
+      if (stagedMemoryMatch) {
+        stagedMemories = stagedMemoryMatch[1];
+        // 从主要记忆内容中移除阶段记忆总结部分，以避免重复
+        messagesPrompt = memoryContent.replace(/## 阶段记忆总结\n[\s\S]+?(?=\n\n|$)/, '').trim();
+        console.log(`[PromptBuilder] 提取到阶段记忆总结，长度: ${stagedMemories.length}`);
+      } else {
+        messagesPrompt = memoryContent;
+      }
     } else {
       // 如果是消息数组，格式化为文本
       messagesPrompt = formatMessagesToPrompt(messagesOrFormattedMemory);
@@ -55,7 +68,7 @@ export class PromptBuilder {
     // 2. 映射到架构层
     const personaAndTone = this.mapSystemToPersonaAndTone(systemBase);
     const taskAndFormat = this.mapStageToTaskAndFormat(stagePrompt, state.currentStage);
-    const context = this.mapToContext(themePrompt, messagesPrompt, elementsPrompt);
+    const context = this.mapToContext(themePrompt, messagesPrompt, elementsPrompt, stagedMemories);
     const exemplar = state.themeDetected ? 
       getExamplarByThemeAndStage(state.themeDetected, state.currentStage) : '';
     
@@ -126,11 +139,12 @@ ${formatRequirements}
     `.trim();
   }
   
-  // 映射主题和记忆到context
+  // 映射主题和记忆到context，增加对阶段记忆的支持
   private mapToContext(
     themePrompt: string, 
     messagesPrompt: string,
-    elementsPrompt: string
+    elementsPrompt: string,
+    stagedMemories: string = ''
   ): string {
     return `
 <context>
@@ -141,6 +155,8 @@ ${themePrompt ? `# 主题知识\n${themePrompt}\n\n` : ''}
 
 # 已确认的创作元素
 ${elementsPrompt}
+
+${stagedMemories ? `# 阶段记忆总结\n${stagedMemories}\n\n` : ''}
 </context>
     `.trim();
   }
