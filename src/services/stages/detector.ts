@@ -17,6 +17,12 @@ export class StageDetector {
     console.log(`[StageDetector] 检查阶段转换条件 - 当前阶段: ${currentStage}, 主题: ${detectedTheme || '未检测'}`);
     console.log(`[StageDetector] 消息数量: ${messages.length}`);
     
+    // C2阶段特殊处理：不使用LLM判断，由manager.ts中的规则匹配处理
+    if (currentStage === 'C2') {
+      console.log(`[StageDetector] C2阶段使用直接规则匹配，跳过LLM检测`);
+      return false; // 总是返回false，让manager.ts处理转换逻辑
+    }
+    
     // 获取最近的几条消息
     const recentMessages = messages.slice(-5);
     

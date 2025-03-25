@@ -38,25 +38,35 @@ export class StageManager {
       }
     }
     
-    // 特殊处理：如果当前是C2阶段且用户已表达想添加新元素，自动转到C1
+    // 特殊处理：C2阶段的转换逻辑，默认转回C1除非明确表示完成
     if (currentStage === 'C2') {
       // 获取最近的用户消息
       const recentMessages = conversation.messages.slice(-3); // 最近3条消息
       const userMessages = recentMessages.filter(m => m.role === 'user');
       
-      // 简单检查是否表达了想添加更多元素的意图
+      // 检查是否表达了结束意图 (简单关键词匹配，避免额外LLM调用)
       if (userMessages.length > 0) {
         const lastUserMsg = userMessages[userMessages.length - 1].content.toLowerCase();
-        if (lastUserMsg.includes('还想') || lastUserMsg.includes('再加') || 
-            lastUserMsg.includes('添加') || lastUserMsg.includes('其他') || 
-            lastUserMsg.includes('新的') || lastUserMsg.includes('还要')) {
-          console.log(`[StageManager] 用户表达想添加新元素，从C2转回C1阶段`);
+        // 扩展完成意图关键词列表
+        if (lastUserMsg.includes('完成') || lastUserMsg.includes('就这些') || 
+            lastUserMsg.includes('好了') || lastUserMsg.includes('结束') || 
+            lastUserMsg.includes('满意') || lastUserMsg.includes('可以了') ||
+            lastUserMsg.includes('画好了') || lastUserMsg.includes('不要了') ||
+            lastUserMsg.includes('够了') || lastUserMsg.includes('不加了')) {
+          console.log(`[StageManager] 用户表达完成意图，从C2转到D阶段`);
+          return 'D';
+        } else {
+          // 默认行为：总是返回C1继续循环(无需额外LLM调用)
+          console.log(`[StageManager] 默认从C2转回C1阶段继续添加元素`);
           return 'C1';
         }
       }
+      
+      // 如果没有最近用户消息，默认继续循环
+      return 'C1';
     }
     
-    // 检查是否应该转换到下一个阶段
+    // 检查是否应该转换到下一个阶段（C2阶段已经在StageDetector中特殊处理，不会触发LLM调用）
     const shouldTransition = await this.detector.shouldTransition(
       conversation.messages,
       currentStage,
@@ -94,30 +104,10 @@ export class StageManager {
       return 'C1';
     }
     
-    // 从C1阶段转换到C2阶段
+    // 从C1阶段转换到C2阶段，需要LLM确认用户提出了具体元素
     if (shouldTransition && currentStage === 'C1') {
       console.log(`[StageManager] 阶段C1满足转换条件，准备转换到阶段C2`);
       return 'C2';
-    }
-    
-    // 从C2阶段转换到D阶段 (如果不是返回C1)
-    if (shouldTransition && currentStage === 'C2') {
-      // 检查是否表达了完成的意图
-      const recentMessages = conversation.messages.slice(-3);
-      const userMessages = recentMessages.filter(m => m.role === 'user');
-      
-      if (userMessages.length > 0) {
-        const lastUserMsg = userMessages[userMessages.length - 1].content.toLowerCase();
-        if (lastUserMsg.includes('完成') || lastUserMsg.includes('就这些') || 
-            lastUserMsg.includes('好了') || lastUserMsg.includes('结束') || 
-            lastUserMsg.includes('满意')) {
-          console.log(`[StageManager] 用户表达完成意图，从C2转到D阶段`);
-          return 'D';
-        } else {
-          console.log(`[StageManager] 默认从C2转回C1阶段继续添加元素`);
-          return 'C1';
-        }
-      }
     }
     
     // 其他阶段正常转换
