@@ -268,8 +268,8 @@ export class ConversationManager {
         console.log(`阶段变更: ${previousStage} -> ${nextStage}`);
         conversation.currentStage = nextStage;
         
-        // 当阶段发生变化时，获取阶段记忆总结
-        console.log(`获取阶段${previousStage}的记忆总结`);
+        // 当阶段发生变化时，通知阶段转换触发器
+        await this.stageTransitionTrigger.checkAndHandleTransition(conversation);
       }
       
       // 创建一个可修改的副本
@@ -298,19 +298,16 @@ export class ConversationManager {
         console.log(`[Manager] 保存主题信息: ${conversation.creativeElements.theme}`);
       }
       
-      // 获取阶段记忆总结
+      // 获取阶段记忆总结 - 不再合并到formattedMemory中，而是直接传递给PromptBuilder
       let stagedMemories = '';
       try {
-        stagedMemories = this.stagedMemory.formatMemoriesForPrompt(conversation.id);
-        console.log(`[Manager] 获取到阶段记忆总结: ${stagedMemories.length > 0 ? '是' : '否'}`);
+        // 传递当前阶段参数，确保不包含当前阶段的记忆
+        stagedMemories = this.stagedMemory.formatMemoriesForPrompt(conversation.id, conversation.currentStage);
+        if (stagedMemories && stagedMemories !== '尚无历史记忆') {
+          console.log(`[Manager] 获取到阶段记忆总结，长度: ${stagedMemories.length}字符`);
+        }
       } catch (error) {
         console.error('[Manager] 获取阶段记忆总结失败:', error);
-      }
-      
-      // 如果有阶段记忆，合并到formattedMemory中
-      if (stagedMemories && stagedMemories.length > 0 && stagedMemories !== '尚无历史记忆') {
-        formattedMemory = `${formattedMemory}\n\n## 阶段记忆总结\n${stagedMemories}`;
-        console.log(`[Manager] 添加阶段记忆到提示词`);
       }
       
       // 检查是否是记忆相关的查询
@@ -318,21 +315,31 @@ export class ConversationManager {
       
       const relevantMemory = memoryController.retrieveRelevantMemory(conversation.messages, userMessage);
       
-      // 如果是记忆相关的查询，添加相关记忆到提示词
-      let enhancedMemory = formattedMemory;
+      // 如果是记忆相关的查询，添加相关记忆到阶段记忆中
       if (relevantMemory) {
-        enhancedMemory = `${formattedMemory}\n\n特别注意以下与用户问题相关的记忆:\n${relevantMemory}`;
-        console.log(`检测到记忆相关查询，添加相关记忆到提示词`);
+        if (stagedMemories && stagedMemories !== '尚无历史记忆') {
+          stagedMemories = `${stagedMemories}\n\n## 当前问题相关记忆\n${relevantMemory}`;
+        } else {
+          stagedMemories = `## 当前问题相关记忆\n${relevantMemory}`;
+        }
+        console.log(`[Manager] 检测到记忆相关查询，添加相关记忆到阶段记忆`);
       }
       
-      // 构建提示词（使用可能已更新的阶段）
+      // 获取已总结的阶段列表，用于消息过滤
+      const summarizedStages = this.stagedMemory.getSummarizedStages ? 
+        this.stagedMemory.getSummarizedStages(conversation.id) : [];
+      console.log(`[Manager] 已总结的阶段: ${summarizedStages.join(', ') || '无'}`);
+      
+      // 构建提示词（传入阶段记忆作为独立参数，同时传入已总结阶段列表）
       const prompt = this.promptBuilder.buildConversationPrompt(
         userMessage,
         conversation.id,
         conversation.currentStage,  // 使用可能已更新的阶段
         detectedTheme,
-        enhancedMemory,
-        mutableCreativeElements
+        conversation.messages,      // 直接传递消息数组，让PromptBuilder处理过滤
+        mutableCreativeElements,
+        stagedMemories,             // 传入阶段记忆作为独立参数
+        summarizedStages            // 传入已总结的阶段列表，用于过滤
       );
       
       // 添加详细的prompt日志
@@ -354,7 +361,8 @@ export class ConversationManager {
           response: aiResponse,
           _debug: {
             prompt: prompt,
-            promptLength: prompt.length
+            promptLength: prompt.length,
+            stagedMemoriesLength: stagedMemories ? stagedMemories.length : 0
           }
         });
       }

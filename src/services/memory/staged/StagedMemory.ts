@@ -10,6 +10,13 @@ interface StagedMemoryItem {
   keywords: string[];          // 阶段关键词
   timestamp: number;           // 记忆创建时间
   lastUpdated?: number;        // 最后更新时间
+  isGroupMemory?: boolean;     // 是否为合并阶段的记忆
+  groupName?: string;          // 阶段组名称（如果是合并阶段）
+}
+
+// 阶段组配置，定义哪些阶段可以合并为一组
+type StageGroupConfig = {
+  [key: string]: ConversationStage[]
 }
 
 /**
@@ -19,12 +26,19 @@ interface StagedMemoryItem {
 export class StagedMemory {
   private static instance: StagedMemory;
   private ollamaService: OllamaService;
-  private memoriesByConversation: Map<string, Map<ConversationStage, StagedMemoryItem>>;
+  private memoriesByConversation: Map<string, Map<ConversationStage | string, StagedMemoryItem>>;
+  private stageGroups: StageGroupConfig;
   
   // 私有构造函数
   private constructor() {
     this.ollamaService = OllamaService.getInstance();
     this.memoriesByConversation = new Map();
+    
+    // 定义阶段组配置
+    this.stageGroups = {
+      'B': ['B1', 'B2'] as ConversationStage[],
+      // 可以在未来添加更多组合，例如 'C': ['C1', 'C2']
+    };
   }
   
   /**
@@ -38,6 +52,40 @@ export class StagedMemory {
   }
   
   /**
+   * 检查是否是最后一个组内阶段
+   * @param stage 当前阶段
+   * @param nextStage 下一阶段
+   */
+  public isLastStageInGroup(stage: ConversationStage, nextStage: ConversationStage): boolean {
+    // 检查所有阶段组
+    for (const [groupName, stages] of Object.entries(this.stageGroups)) {
+      const isInGroup = stages.includes(stage);
+      const leavingGroup = !stages.includes(nextStage);
+      
+      // 如果当前阶段在组内，且下一阶段不在同一组内，则表示离开组
+      if (isInGroup && leavingGroup) {
+        console.log(`[StagedMemory] 检测到离开阶段组${groupName}: ${stage} -> ${nextStage}`);
+        return true;
+      }
+    }
+    
+    return false;
+  }
+  
+  /**
+   * 获取阶段所属的组
+   * @param stage 阶段
+   */
+  public getStageGroup(stage: ConversationStage): string | null {
+    for (const [groupName, stages] of Object.entries(this.stageGroups)) {
+      if (stages.includes(stage)) {
+        return groupName;
+      }
+    }
+    return null;
+  }
+  
+  /**
    * 在阶段转换时总结前一阶段记忆
    * @param conversation 当前会话
    * @param prevStage 前一阶段
@@ -48,9 +96,27 @@ export class StagedMemory {
     prevStage: ConversationStage,
     currentStage: ConversationStage
   ): Promise<StagedMemoryItem | null> {
+    // 跳过A阶段总结，因为A阶段已经通过创意元素提取实现了记忆
+    if (prevStage === 'A') {
+      console.log(`[StagedMemory] 跳过阶段A的记忆总结，因为已通过创意元素提取`);
+      return null;
+    }
+    
     console.log(`[StagedMemory] 开始总结阶段${prevStage}的记忆`);
     
-    // 提取该阶段的消息
+    // 检查是否是特殊阶段组的最后一个阶段
+    const isLastInGroup = this.isLastStageInGroup(prevStage, currentStage);
+    
+    if (isLastInGroup) {
+      // 如果是组内最后一个阶段，则进行组合总结
+      const groupName = this.getStageGroup(prevStage);
+      if (groupName) {
+        console.log(`[StagedMemory] 检测到阶段${prevStage}是${groupName}组的最后阶段，准备合并总结`);
+        return await this.summarizeStageGroup(conversation, groupName, currentStage);
+      }
+    }
+    
+    // 常规单阶段总结
     const stageMessages = this.extractStageMessages(conversation, prevStage);
     
     if (stageMessages.length === 0) {
@@ -80,11 +146,65 @@ export class StagedMemory {
   }
   
   /**
+   * 合并总结整个阶段组的记忆
+   * @param conversation 当前会话
+   * @param groupName 组名
+   * @param currentStage 当前阶段
+   */
+  private async summarizeStageGroup(
+    conversation: Conversation,
+    groupName: string,
+    currentStage: ConversationStage
+  ): Promise<StagedMemoryItem | null> {
+    console.log(`[StagedMemory] 开始合并总结${groupName}组的记忆`);
+    
+    const stages = this.stageGroups[groupName];
+    if (!stages || stages.length === 0) {
+      console.log(`[StagedMemory] 找不到阶段组${groupName}的配置`);
+      return null;
+    }
+    
+    // 收集该组所有阶段的消息
+    let allGroupMessages: Message[] = [];
+    for (const stage of stages) {
+      const stageMessages = this.extractStageMessages(conversation, stage);
+      allGroupMessages = [...allGroupMessages, ...stageMessages];
+    }
+    
+    if (allGroupMessages.length === 0) {
+      console.log(`[StagedMemory] 阶段组${groupName}没有消息，跳过总结`);
+      return null;
+    }
+    
+    // 生成组合记忆总结
+    const summary = await this.generateStageSummary(allGroupMessages, groupName as any);
+    
+    // 提取关键词
+    const keywords = await this.extractKeywords(allGroupMessages, groupName as any);
+    
+    // 创建组合记忆项
+    const memoryItem: StagedMemoryItem = {
+      stage: stages[0], // 使用组内第一个阶段作为标识
+      summary,
+      keywords,
+      timestamp: Date.now(),
+      isGroupMemory: true,
+      groupName
+    };
+    
+    // 以组名为键存储记忆
+    this.storeGroupMemory(conversation.id, groupName, memoryItem);
+    
+    console.log(`[StagedMemory] 阶段组${groupName}记忆总结完成，长度: ${summary.length}`);
+    return memoryItem;
+  }
+  
+  /**
    * 提取指定阶段的消息
    */
   private extractStageMessages(conversation: Conversation, stage: ConversationStage): Message[] {
     // 获取所有阶段转换点
-    const stageTransitionPoints: number[] = [];
+    const stageTransitionPoints: {index: number, stage: ConversationStage}[] = [];
     let currentStage = 'A' as ConversationStage;
     
     // 标记所有阶段转换的消息索引
@@ -92,30 +212,49 @@ export class StagedMemory {
       if (message.role === 'assistant' && 
           message.content.includes('阶段更新') && 
           message.content.includes('->')) {
-        stageTransitionPoints.push(index);
-        // 这里简化处理，实际应从消息中解析出确切的阶段信息
+        
+        // 尝试从消息中提取确切的阶段信息
+        const stageMatch = message.content.match(/阶段更新.*?(\w+)\s*->\s*(\w+)/i);
+        if (stageMatch && stageMatch[2]) {
+          const newStage = stageMatch[2] as ConversationStage;
+          stageTransitionPoints.push({index, stage: newStage});
+          console.log(`[StagedMemory] 检测到阶段转换点: 索引=${index}, 阶段=${newStage}`);
+        }
       }
     });
     
-    // 如果没有转换点，返回所有消息
+    // 如果没有转换点，尝试基于消息内容和当前阶段进行推断
     if (stageTransitionPoints.length === 0) {
-      return conversation.messages;
+      // 根据当前阶段返回最近的几条消息
+      const recentMessages = conversation.messages.slice(-5);
+      console.log(`[StagedMemory] 未检测到转换点，返回最近${recentMessages.length}条消息用于阶段${stage}总结`);
+      return recentMessages;
     }
     
-    // 找到当前阶段的开始和结束索引
+    // 找到指定阶段的消息范围
     let startIndex = 0;
     let endIndex = conversation.messages.length - 1;
     
-    // 根据转换点确定阶段的消息范围
-    // 这里简化实现，实际可能需要更精确的阶段边界判定
+    // 寻找指定阶段的开始点
+    for (let i = 0; i < stageTransitionPoints.length; i++) {
+      if (stageTransitionPoints[i].stage === stage) {
+        startIndex = stageTransitionPoints[i].index;
+        // 寻找该阶段的结束点(下一个阶段的开始点-1)
+        if (i < stageTransitionPoints.length - 1) {
+          endIndex = stageTransitionPoints[i + 1].index - 1;
+        }
+        break;
+      }
+    }
     
+    console.log(`[StagedMemory] 提取阶段${stage}消息: 索引范围 ${startIndex} - ${endIndex}`);
     return conversation.messages.slice(startIndex, endIndex + 1);
   }
   
   /**
    * 生成阶段记忆总结
    */
-  private async generateStageSummary(messages: Message[], stage: ConversationStage): Promise<string> {
+  private async generateStageSummary(messages: Message[], stage: ConversationStage | string): Promise<string> {
     // 构建提示词
     const messagesText = messages.map(m => 
       `${m.role === 'user' ? '儿童' : 'AI'}: ${m.content}`
@@ -153,7 +292,7 @@ ${messagesText}
   /**
    * 提取阶段关键词
    */
-  private async extractKeywords(messages: Message[], stage: ConversationStage): Promise<string[]> {
+  private async extractKeywords(messages: Message[], stage: ConversationStage | string): Promise<string[]> {
     // 构建提示词提取关键词
     const messagesText = messages.map(m => 
       `${m.role === 'user' ? '儿童' : 'AI'}: ${m.content}`
@@ -207,9 +346,35 @@ ${messagesText}
   }
   
   /**
+   * 存储阶段组记忆
+   */
+  private storeGroupMemory(conversationId: string, groupName: string, memory: StagedMemoryItem): void {
+    // 获取会话的记忆Map，如果不存在则创建
+    if (!this.memoriesByConversation.has(conversationId)) {
+      this.memoriesByConversation.set(conversationId, new Map());
+    }
+    
+    const conversationMemories = this.memoriesByConversation.get(conversationId)!;
+    
+    // 使用组名作为键存储
+    conversationMemories.set(groupName, memory);
+    
+    // 可选：删除该组中各个阶段的单独记忆，避免重复
+    const stages = this.stageGroups[groupName];
+    if (stages) {
+      for (const stage of stages) {
+        if (conversationMemories.has(stage)) {
+          console.log(`[StagedMemory] 删除单独的阶段${stage}记忆，已被组${groupName}记忆替代`);
+          conversationMemories.delete(stage);
+        }
+      }
+    }
+  }
+  
+  /**
    * 获取会话的所有阶段记忆
    */
-  public getConversationMemories(conversationId: string): Map<ConversationStage, StagedMemoryItem> | null {
+  public getConversationMemories(conversationId: string): Map<ConversationStage | string, StagedMemoryItem> | null {
     return this.memoriesByConversation.get(conversationId) || null;
   }
   
@@ -220,26 +385,114 @@ ${messagesText}
     const conversationMemories = this.memoriesByConversation.get(conversationId);
     if (!conversationMemories) return null;
     
-    return conversationMemories.get(stage) || null;
+    // 先检查是否有直接匹配的阶段记忆
+    if (conversationMemories.has(stage)) {
+      return conversationMemories.get(stage) || null;
+    }
+    
+    // 如果没有直接匹配，检查是否有包含该阶段的组记忆
+    const groupName = this.getStageGroup(stage);
+    if (groupName && conversationMemories.has(groupName)) {
+      return conversationMemories.get(groupName) || null;
+    }
+    
+    return null;
   }
   
   /**
    * 获取格式化的记忆，适用于提示词构建
+   * 排除当前阶段的记忆，只包含已完成阶段的记忆
+   * 
+   * @param conversationId 会话ID
+   * @param currentStage 当前阶段，用于排除当前阶段的记忆
+   * @returns 格式化的记忆文本
    */
-  public formatMemoriesForPrompt(conversationId: string): string {
+  public formatMemoriesForPrompt(conversationId: string, currentStage?: ConversationStage): string {
     const conversationMemories = this.memoriesByConversation.get(conversationId);
     if (!conversationMemories || conversationMemories.size === 0) {
       return '尚无历史记忆';
     }
     
-    // 将所有记忆按阶段顺序排列并格式化
-    const orderedStages: ConversationStage[] = ['A', 'B1', 'B2', 'C1', 'C2', 'D'];
+    // 阶段顺序定义
+    const stageOrder: (ConversationStage | string)[] = ['A', 'B', 'B1', 'B2', 'C1', 'C2', 'D'];
     
-    const formattedMemories = orderedStages
-      .filter(stage => conversationMemories.has(stage))
-      .map(stage => {
-        const memory = conversationMemories.get(stage)!;
-        return `## 阶段${stage}记忆\n${memory.summary}\n\n关键词: ${memory.keywords.join(', ')}`;
+    // 转换为数组并按阶段顺序排序
+    const memoriesArray: [ConversationStage | string, StagedMemoryItem][] = [...conversationMemories.entries()];
+    memoriesArray.sort((a, b) => {
+      const aIndex = stageOrder.indexOf(a[0]);
+      const bIndex = stageOrder.indexOf(b[0]);
+      
+      // 如果找不到索引，放到最后
+      if (aIndex === -1) return 1;
+      if (bIndex === -1) return -1;
+      
+      return aIndex - bIndex;
+    });
+    
+    // 优先使用阶段组记忆，过滤掉被组记忆替代的单一阶段记忆
+    // 同时过滤掉当前阶段的记忆
+    const filteredMemories = memoriesArray.filter(([stageKey, memory]) => {
+      // 如果提供了当前阶段，排除当前阶段及其所属的组
+      if (currentStage) {
+        // 排除当前阶段的直接记忆
+        if (memory.stage === currentStage) {
+          console.log(`[StagedMemory] 排除当前阶段${currentStage}的记忆`);
+          return false;
+        }
+        
+        // 排除包含当前阶段的组记忆
+        if (memory.isGroupMemory && memory.groupName) {
+          const stages = this.stageGroups[memory.groupName];
+          if (stages && stages.includes(currentStage)) {
+            console.log(`[StagedMemory] 排除包含当前阶段${currentStage}的组记忆: ${memory.groupName}`);
+            return false;
+          }
+        }
+        
+        // 确保当前阶段的组不被包含
+        const currentStageGroup = this.getStageGroup(currentStage);
+        if (currentStageGroup && stageKey === currentStageGroup) {
+          console.log(`[StagedMemory] 排除当前阶段${currentStage}所属的组记忆: ${currentStageGroup}`);
+          return false;
+        }
+      }
+      
+      // 保留所有其他组记忆
+      if (memory.isGroupMemory) return true;
+      
+      // 检查该阶段是否属于某个组，且该组的记忆是否存在
+      const groupName = this.getStageGroup(memory.stage as ConversationStage);
+      if (groupName && memoriesArray.some(([key]) => key === groupName)) {
+        console.log(`[StagedMemory] 过滤掉阶段${memory.stage}的单独记忆，使用${groupName}组记忆代替`);
+        return false;
+      }
+      
+      return true;
+    });
+    
+    // 如果过滤后没有记忆，返回无记忆提示
+    if (filteredMemories.length === 0) {
+      return '尚无历史记忆';
+    }
+    
+    // 格式化记忆内容，避免重复
+    let previousKeywords = new Set<string>();
+    const formattedMemories = filteredMemories
+      .map(([key, memory]) => {
+        // 确定显示的阶段标签
+        const stageLabel = memory.isGroupMemory ? memory.groupName! : memory.stage;
+        
+        // 过滤掉与前面阶段重复的关键词
+        const uniqueKeywords = memory.keywords.filter(keyword => !previousKeywords.has(keyword));
+        
+        // 将当前关键词添加到已使用集合
+        memory.keywords.forEach(keyword => previousKeywords.add(keyword));
+        
+        // 格式化记忆内容
+        return `## 阶段${stageLabel}记忆
+${memory.summary}
+
+关键词: ${uniqueKeywords.length > 0 ? uniqueKeywords.join(', ') : '(无新增关键词)'}`;
       })
       .join('\n\n');
     

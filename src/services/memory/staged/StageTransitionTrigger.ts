@@ -9,6 +9,7 @@ export class StageTransitionTrigger {
   private static instance: StageTransitionTrigger;
   private stagedMemory: StagedMemory;
   private lastStageByConversation: Map<string, ConversationStage>;
+  private skipStageSummary: ConversationStage[] = ['A']; // 不需要总结的阶段列表
   
   // 私有构造函数
   private constructor() {
@@ -42,8 +43,8 @@ export class StageTransitionTrigger {
     if (lastStage !== currentStage) {
       console.log(`[StageTransitionTrigger] 检测到阶段转换: ${lastStage} -> ${currentStage}`);
       
-      // 总结前一阶段的记忆
-      await this.summarizeLastStage(conversation, lastStage, currentStage);
+      // 根据特殊规则处理不同的阶段转换
+      await this.handleSpecialStageTransition(conversation, lastStage, currentStage);
       
       // 更新最后一个阶段记录
       this.lastStageByConversation.set(conversationId, currentStage);
@@ -54,6 +55,60 @@ export class StageTransitionTrigger {
     // 没有阶段变化，更新记录保持一致
     this.lastStageByConversation.set(conversationId, currentStage);
     return false;
+  }
+  
+  /**
+   * 处理特殊阶段转换
+   * @param conversation 当前会话
+   * @param prevStage 前一阶段
+   * @param currentStage 当前阶段
+   */
+  private async handleSpecialStageTransition(
+    conversation: Conversation,
+    prevStage: ConversationStage, 
+    currentStage: ConversationStage
+  ): Promise<void> {
+    // 检查是否为不需要总结的阶段
+    if (this.skipStageSummary.includes(prevStage)) {
+      console.log(`[StageTransitionTrigger] 跳过阶段${prevStage}记忆总结，因为此阶段不需要总结`);
+      return;
+    }
+    
+    // 特殊阶段转换处理：从B2阶段离开应该总结整个B阶段(B1+B2)
+    const isLeavingBStage = (prevStage === 'B2' && currentStage === 'C1');
+    if (isLeavingBStage) {
+      console.log(`[StageTransitionTrigger] 检测到离开B阶段，将执行B阶段整体总结`);
+      await this.summarizeLastStage(conversation, prevStage, currentStage);
+      return;
+    }
+    
+    // 特殊阶段转换处理：C1与C2之间的循环总结
+    const isInCLoop = (
+      (prevStage === 'C1' && currentStage === 'C2') ||
+      (prevStage === 'C2' && currentStage === 'C1')
+    );
+    
+    if (isInCLoop) {
+      // 当从C2回到C1时，表示完成了一个元素的添加，此时进行总结
+      if (prevStage === 'C2' && currentStage === 'C1') {
+        console.log(`[StageTransitionTrigger] 检测到从C2回到C1，总结当前元素添加`);
+        await this.summarizeLastStage(conversation, prevStage, currentStage);
+      } else {
+        console.log(`[StageTransitionTrigger] 跳过C1->C2的总结，等待元素描述完成`);
+      }
+      return;
+    }
+    
+    // 完成创作阶段的特殊处理
+    if (currentStage === 'D') {
+      console.log(`[StageTransitionTrigger] 检测到进入完成阶段D，总结前一阶段并准备最终总结`);
+      await this.summarizeLastStage(conversation, prevStage, currentStage);
+      // 可以在这里添加生成整个创作过程的完整总结的代码
+      return;
+    }
+    
+    // 默认处理：总结前一阶段的记忆
+    await this.summarizeLastStage(conversation, prevStage, currentStage);
   }
   
   /**
