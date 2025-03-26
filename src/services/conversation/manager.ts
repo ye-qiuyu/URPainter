@@ -74,6 +74,10 @@ export class ConversationManager {
     
     // 不再调用MemoryManager.addMessage，因为我们现在使用ClientMemory
     
+    // 添加消息到当前阶段
+    this.stagedMemory.addMessageToStage(conversation.id, message, conversation.currentStage);
+    console.log(`[ConversationManager] 将消息添加到阶段${conversation.currentStage}`);
+    
     return conversation;
   }
   
@@ -150,6 +154,10 @@ export class ConversationManager {
     // 添加用户消息到会话
     conversation.messages.push(userMessageObj);
     
+    // 添加用户消息到当前阶段
+    this.stagedMemory.addMessageToStage(conversation.id, userMessageObj, conversation.currentStage);
+    console.log(`[ConversationManager] 将用户消息添加到阶段${conversation.currentStage}`);
+    
     // 不再调用MemoryManager.addMessage
     
     // 检测主题（如果尚未检测且有足够的消息）
@@ -181,6 +189,10 @@ export class ConversationManager {
     
     // 添加AI消息到会话
     conversation.messages.push(aiMessageObj);
+    
+    // 添加AI消息到当前阶段
+    this.stagedMemory.addMessageToStage(conversation.id, aiMessageObj, conversation.currentStage);
+    console.log(`[ConversationManager] 将AI响应添加到阶段${conversation.currentStage}`);
     
     // 不再调用MemoryManager.addMessage
     
@@ -255,6 +267,18 @@ export class ConversationManager {
   ): Promise<string> {
     try {
       console.log(`处理消息 - 会话ID: ${conversation.id}, 消息长度: ${userMessage.length}`);
+      
+      // 创建用户消息对象并添加到阶段
+      const userMessageObj: Message = {
+        id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+        role: 'user',
+        content: userMessage,
+        timestamp: Date.now()
+      };
+      
+      // 添加用户消息到当前阶段
+      this.stagedMemory.addMessageToStage(conversation.id, userMessageObj, conversation.currentStage);
+      console.log(`[ConversationManager] 将用户消息添加到阶段${conversation.currentStage}`);
       
       // 检测主题（如果尚未检测）
       let detectedTheme = conversation.detectedTheme;
@@ -348,8 +372,21 @@ export class ConversationManager {
       
       // 获取AI响应
       console.log('请求AI响应...');
+      console.log(`请求AI响应 - 提示词长度: ${prompt.length}`);
       const aiResponse = await this.aiTextService.getResponse(prompt);
       console.log(`收到AI响应 - 长度: ${aiResponse.length}`);
+      
+      // 创建AI消息对象并添加到阶段
+      const aiMessageObj: Message = {
+        id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+        role: 'assistant',
+        content: aiResponse,
+        timestamp: Date.now()
+      };
+      
+      // 添加AI消息到当前阶段
+      this.stagedMemory.addMessageToStage(conversation.id, aiMessageObj, conversation.currentStage);
+      console.log(`[ConversationManager] 将AI响应添加到阶段${conversation.currentStage}`);
       
       // 在开发环境中，将prompt添加到响应中，以便前端可以在控制台查看
       if (process.env.NODE_ENV === 'development') {

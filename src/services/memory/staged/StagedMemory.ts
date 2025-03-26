@@ -28,6 +28,8 @@ export class StagedMemory {
   private ollamaService: OllamaService;
   private memoriesByConversation: Map<string, Map<ConversationStage | string, StagedMemoryItem>>;
   private stageGroups: StageGroupConfig;
+  // 新增：按阶段存储消息的Map结构
+  private messagesByStage: Map<string, Map<ConversationStage, Message[]>> = new Map();
   
   // 私有构造函数
   private constructor() {
@@ -203,6 +205,17 @@ export class StagedMemory {
    * 提取指定阶段的消息
    */
   private extractStageMessages(conversation: Conversation, stage: ConversationStage): Message[] {
+    // 首先尝试从按阶段存储的消息中获取
+    const stageMessages = this.getStageMessages(conversation.id, stage);
+    
+    if (stageMessages.length > 0) {
+      console.log(`[StagedMemory] 从阶段存储中获取阶段${stage}消息: ${stageMessages.length}条`);
+      return stageMessages;
+    }
+    
+    // 如果没有找到，使用旧方法作为备选
+    console.log(`[StagedMemory] 阶段${stage}没有存储的消息，使用启发式方法提取`);
+    
     // 获取所有阶段转换点
     const stageTransitionPoints: {index: number, stage: ConversationStage}[] = [];
     let currentStage = 'A' as ConversationStage;
@@ -534,6 +547,8 @@ ${memory.summary}
    */
   public clearMemories(conversationId: string): void {
     this.memoriesByConversation.delete(conversationId);
+    this.messagesByStage.delete(conversationId);
+    console.log(`[StagedMemory] 已清除会话${conversationId.substring(0, 8)}...的所有记忆和阶段消息`);
   }
 
   /**
@@ -683,5 +698,42 @@ ${dialogHistory}
     this.storeMemory(conversation.id, memoryItem);
     console.log(`[StagedMemory] A阶段备用总结完成`);
     return memoryItem;
+  }
+
+  /**
+   * 添加消息到指定阶段
+   * @param conversationId 会话ID
+   * @param message 消息
+   * @param stage 阶段
+   */
+  public addMessageToStage(conversationId: string, message: Message, stage: ConversationStage): void {
+    if (!this.messagesByStage.has(conversationId)) {
+      this.messagesByStage.set(conversationId, new Map());
+    }
+    
+    const stageMap = this.messagesByStage.get(conversationId)!;
+    if (!stageMap.has(stage)) {
+      stageMap.set(stage, []);
+    }
+    
+    stageMap.get(stage)!.push(message);
+    console.log(`[StagedMemory] 添加消息到阶段${stage}，会话ID: ${conversationId.substring(0, 8)}...`);
+  }
+
+  /**
+   * 获取指定阶段的所有消息
+   * @param conversationId 会话ID
+   * @param stage 阶段
+   */
+  public getStageMessages(conversationId: string, stage: ConversationStage): Message[] {
+    return this.messagesByStage.get(conversationId)?.get(stage) || [];
+  }
+
+  /**
+   * 获取指定会话的所有阶段消息
+   * @param conversationId 会话ID
+   */
+  public getAllStageMessages(conversationId: string): Map<ConversationStage, Message[]> | null {
+    return this.messagesByStage.get(conversationId) || null;
   }
 } 

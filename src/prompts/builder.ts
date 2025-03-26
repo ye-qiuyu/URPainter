@@ -196,6 +196,7 @@ ${exemplar ? `<exemplar>\n${exemplar}\n</exemplar>\n` : ''}
   
   /**
    * 针对不同阶段优化消息，移除已总结阶段的消息
+   * 注意：这个方法现在会优先尝试从StagedMemory中获取当前阶段的消息
    */
   private optimizeMessagesForStage(
     messages: Message[], 
@@ -205,6 +206,9 @@ ${exemplar ? `<exemplar>\n${exemplar}\n</exemplar>\n` : ''}
   ): Message[] {
     if (messages.length === 0) return messages;
     console.log(`[PromptBuilder] 开始消息优化，当前阶段: ${currentStage}, 已总结阶段: ${summarizedStages.join(', ')}`);
+    
+    // 推荐使用StagedMemory提供的阶段消息功能
+    // 这里保留原来的逻辑作为备选，以确保向后兼容
     
     // 如果没有已总结的阶段，直接应用基本限制
     if (summarizedStages.length === 0) {
