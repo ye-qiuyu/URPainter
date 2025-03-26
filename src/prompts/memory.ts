@@ -17,19 +17,44 @@ export function formatMessagesToPrompt(messages: Message[]): string {
   return prefix + formattedMessages;
 }
 
-// 格式化已确认的创作元素
+/**
+ * 格式化确认的创意元素
+ * 
+ * @param theme 主题
+ * @param mainCharacter 主角
+ * @param supportElements 辅助元素
+ * @returns 格式化的创意元素字符串
+ */
 export function formatCreativeElements(
   theme?: string,
   mainCharacter?: string,
   supportElements?: string[]
 ): string {
+  // 注意：此函数已被注释掉，当前会返回空字符串
+  // 如果需要恢复创意元素显示，请取消下面代码的注释
+  
+  /*
   const elements = [];
   
-  if (theme) elements.push(`- 主题: ${theme}`);
-  if (mainCharacter) elements.push(`- 主角: ${mainCharacter}`);
-  if (supportElements?.length) {
-    elements.push(`- 其他元素: ${supportElements.join(', ')}`);
+  if (theme) {
+    elements.push(`- 主题: ${theme}`);
   }
   
-  return elements.length ? elements.join('\n') : '尚未确认任何创作元素';
+  if (mainCharacter) {
+    elements.push(`- 主角: ${mainCharacter}`);
+  }
+  
+  if (supportElements && supportElements.length > 0) {
+    elements.push(`- 辅助元素: ${supportElements.join('、')}`);
+  }
+  
+  if (elements.length === 0) {
+    return '尚未确认任何创意元素';
+  }
+  
+  return elements.join('\n');
+  */
+  
+  // 返回空字符串
+  return '';
 } 

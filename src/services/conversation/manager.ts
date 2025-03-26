@@ -220,15 +220,19 @@ export class ConversationManager {
         console.log(`[阶段判断] 阶段变更: ${currentStage} -> ${nextStage}`);
         console.log(`[阶段判断] 变更原因: 满足阶段转换条件`);
         
-        // 触发阶段转换记忆处理
-        const previousStage = conversation.currentStage;
         // 先更新会话的阶段
         conversation.currentStage = nextStage;
         
         // 然后触发记忆总结
-        await this.stageTransitionTrigger.checkAndHandleTransition(conversation);
+        try {
+          console.log(`[阶段判断] 触发阶段转换记忆处理 ${currentStage} -> ${nextStage}`);
+          const transitResult = await this.stageTransitionTrigger.checkAndHandleTransition(conversation);
+          console.log(`[阶段判断] 阶段转换处理结果: ${transitResult ? '已处理' : '未处理'}`);
+        } catch (error) {
+          console.error(`[阶段判断] 阶段转换记忆处理出错:`, error);
+        }
         
-        console.log(`[阶段判断] 阶段记忆处理完成: ${previousStage} -> ${nextStage}`);
+        console.log(`[阶段判断] 阶段记忆处理完成: ${currentStage} -> ${nextStage}`);
       } else {
         console.log(`[阶段判断] 保持当前阶段: ${currentStage}`);
       }
@@ -264,15 +268,7 @@ export class ConversationManager {
       const previousStage = conversation.currentStage;
       const nextStage = await this.determineNextStage(conversation);
       
-      if (nextStage !== previousStage) {
-        console.log(`阶段变更: ${previousStage} -> ${nextStage}`);
-        conversation.currentStage = nextStage;
-        
-        // 当阶段发生变化时，通知阶段转换触发器
-        await this.stageTransitionTrigger.checkAndHandleTransition(conversation);
-      }
-      
-      // 创建一个可修改的副本
+      // 创建一个可修改的副本，确保保留原有信息
       const mutableCreativeElements = {
         ...creativeElements,
         ...(conversation.creativeElements || {})

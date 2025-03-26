@@ -27,6 +27,7 @@ export class PromptBuilderService {
    * @param messagesOrFormattedMemory 消息数组或格式化的记忆文本
    * @param creativeElements 创意元素
    * @param stagedMemories 阶段记忆总结
+   * @param summarizedStages 已总结的阶段列表
    * @returns 构建的提示词
    */
   buildConversationPrompt(
@@ -36,7 +37,8 @@ export class PromptBuilderService {
     detectedTheme?: ThemeCategory,
     messagesOrFormattedMemory: Message[] | string = '',
     creativeElements: Partial<CreativeElements> = {},
-    stagedMemories?: string
+    stagedMemories?: string,
+    summarizedStages: string[] = []
   ): string {
     console.log(`构建提示词 - 会话ID: ${conversationId}, 阶段: ${currentStage}`);
     
@@ -53,7 +55,8 @@ export class PromptBuilderService {
       userMessage,
       messagesOrFormattedMemory,
       creativeElements,
-      stagedMemories
+      stagedMemories,
+      summarizedStages
     );
   }
   

@@ -14,6 +14,7 @@ export class PromptBuilder {
    * @param messagesOrFormattedMemory 消息数组或已格式化的记忆文本
    * @param creativeElements 创意元素
    * @param stagedMemories 分阶段记忆内容
+   * @param summarizedStages 已总结的阶段列表
    * @returns 构建的完整提示词
    */
   buildFullPrompt(
@@ -26,7 +27,8 @@ export class PromptBuilder {
       supportElements?: string[];
       needSummary?: boolean;
     },
-    stagedMemories?: string
+    stagedMemories?: string,
+    summarizedStages: string[] = []
   ): string {
     // 1. 获取各功能层内容
     const systemBase = systemBasePrompt;
@@ -42,28 +44,33 @@ export class PromptBuilder {
     let messagesPrompt: string;
     let extractedStagedMemories: string = stagedMemories || '';
     
-    // 提取已总结的阶段信息
-    const summarizedStages: string[] = [];
-    if (extractedStagedMemories && extractedStagedMemories !== '尚无历史记忆') {
-      // 从阶段记忆总结中提取阶段信息
-      const stageMatches = extractedStagedMemories.match(/##\s*阶段([A-Z0-9]+)记忆/g);
-      if (stageMatches) {
-        stageMatches.forEach(match => {
-          // 提取阶段名，如"阶段B记忆"提取为"B"
-          const stageName = match.replace(/##\s*阶段([A-Z0-9]+)记忆/, '$1');
-          if (stageName) {
-            summarizedStages.push(stageName);
-            console.log(`[PromptBuilder] 已提取总结阶段: ${stageName}`);
-          }
-        });
-      }
-      
-      // 检查是否有阶段组记忆
-      if (extractedStagedMemories.includes('阶段B记忆')) {
-        console.log(`[PromptBuilder] 检测到B阶段组记忆，将过滤B1和B2阶段的消息`);
-      }
-      if (extractedStagedMemories.includes('阶段C记忆')) {
-        console.log(`[PromptBuilder] 检测到C阶段组记忆，将过滤C1和C2阶段的消息`);
+    // 检查是否传入了已总结阶段列表
+    if (summarizedStages && summarizedStages.length > 0) {
+      console.log(`[PromptBuilder] 使用传入的已总结阶段列表: ${summarizedStages.join(', ')}`);
+    } else {
+      // 如果没有传入，尝试从阶段记忆总结中提取
+      summarizedStages = [];
+      if (extractedStagedMemories && extractedStagedMemories !== '尚无历史记忆') {
+        // 从阶段记忆总结中提取阶段信息
+        const stageMatches = extractedStagedMemories.match(/##\s*阶段([A-Z0-9]+)记忆/g);
+        if (stageMatches) {
+          stageMatches.forEach(match => {
+            // 提取阶段名，如"阶段B记忆"提取为"B"
+            const stageName = match.replace(/##\s*阶段([A-Z0-9]+)记忆/, '$1');
+            if (stageName) {
+              summarizedStages.push(stageName);
+              console.log(`[PromptBuilder] 已提取总结阶段: ${stageName}`);
+            }
+          });
+        }
+        
+        // 检查是否有阶段组记忆
+        if (extractedStagedMemories.includes('阶段B记忆')) {
+          console.log(`[PromptBuilder] 检测到B阶段组记忆，将过滤B1和B2阶段的消息`);
+        }
+        if (extractedStagedMemories.includes('阶段C记忆')) {
+          console.log(`[PromptBuilder] 检测到C阶段组记忆，将过滤C1和C2阶段的消息`);
+        }
       }
     }
     
@@ -108,6 +115,8 @@ export class PromptBuilder {
       }
     }
     
+    // 注意：formatCreativeElements已被注释，现在始终返回空字符串
+    // 如果需要恢复创作元素显示，请取消src/prompts/memory.ts中相关代码的注释
     const elementsPrompt = formatCreativeElements(
       creativeElements?.theme,
       creativeElements?.mainCharacter,

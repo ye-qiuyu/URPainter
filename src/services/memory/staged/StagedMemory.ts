@@ -333,16 +333,46 @@ ${messagesText}
   }
   
   /**
-   * 存储记忆项
+   * 存储记忆项到指定会话
+   * 
+   * @param conversationId 会话ID
+   * @param memory 要存储的记忆项
    */
   private storeMemory(conversationId: string, memory: StagedMemoryItem): void {
-    // 获取会话的记忆Map，如果不存在则创建
-    if (!this.memoriesByConversation.has(conversationId)) {
-      this.memoriesByConversation.set(conversationId, new Map());
+    console.log(`[StagedMemory] 存储阶段${memory.stage}的记忆：${memory.summary.substring(0, 50)}...`);
+    
+    // 确保记忆Map存在
+    let memories = this.memoriesByConversation.get(conversationId);
+    if (!memories) {
+      memories = new Map();
+      this.memoriesByConversation.set(conversationId, memories);
     }
     
-    const conversationMemories = this.memoriesByConversation.get(conversationId)!;
-    conversationMemories.set(memory.stage, memory);
+    // 如果是阶段组记忆，做特殊处理
+    if (memory.isGroupMemory && memory.groupName) {
+      // 存储到对应的组键下
+      memories.set(memory.groupName, memory);
+      console.log(`[StagedMemory] 存储${memory.groupName}组记忆成功`);
+      
+      // 移除被组记忆替代的单一阶段记忆
+      const groupStages = this.stageGroups[memory.groupName] || [];
+      for (const stage of groupStages) {
+        if (memories.has(stage)) {
+          console.log(`[StagedMemory] 删除被${memory.groupName}组记忆替代的单一阶段${stage}记忆`);
+          memories.delete(stage);
+        }
+      }
+    } else {
+      // 普通阶段记忆，直接存储
+      memories.set(memory.stage, memory);
+      console.log(`[StagedMemory] 存储阶段${memory.stage}记忆成功`);
+      
+      // 特别为阶段A添加日志
+      if (memory.stage === 'A') {
+        console.log(`[StagedMemory] 阶段A记忆已存储，内容: ${memory.summary}`);
+        console.log(`[StagedMemory] 阶段A记忆关键词: ${memory.keywords.join(', ')}`);
+      }
+    }
   }
   
   /**
@@ -504,5 +534,154 @@ ${memory.summary}
    */
   public clearMemories(conversationId: string): void {
     this.memoriesByConversation.delete(conversationId);
+  }
+
+  /**
+   * 获取已总结的阶段列表
+   * @param conversationId 会话ID
+   * @returns 已总结的阶段ID数组
+   */
+  public getSummarizedStages(conversationId: string): string[] {
+    const memories = this.getConversationMemories(conversationId);
+    if (!memories) return [];
+    
+    // 返回所有已存储记忆的阶段名称，包括阶段组
+    const stages = Array.from(memories.keys()).map(key => String(key));
+    console.log(`[StagedMemory] 获取已总结阶段: ${stages.join(', ') || '无'}`);
+    return stages;
+  }
+
+  /**
+   * 总结A阶段内容，提取创作元素
+   * @param conversation 当前会话
+   * @returns 提取的阶段记忆项
+   */
+  public async summarizeAStage(conversation: Conversation): Promise<StagedMemoryItem | null> {
+    console.log(`[StagedMemory] 开始总结A阶段的创作元素`);
+    
+    try {
+      // 构建对话历史文本
+      const dialogHistory = conversation.messages
+        .map(m => `${m.role === 'user' ? '用户' : 'AI助手'}: ${m.content}`)
+        .join('\n');
+      
+      // 构建提取创作元素的提示词
+      const prompt = `
+你是一位儿童绘画分析师，需要从以下4-6岁儿童与AI的对话中提取关键创作信息。
+
+对话历史:
+${dialogHistory}
+
+根据上面的对话，请分析:
+1. 这个故事或绘画的主题是什么？（简洁描述整体创作方向）
+2. 这个故事中的主角(主要角色或物体)是什么？（提取核心角色或物体名称）
+3. 可能的辅助元素有哪些？（提取故事中除主角外的其他元素）
+
+只需返回以下JSON格式，不要有其他任何文字:
+{
+  "theme": "故事/绘画主题",
+  "mainCharacter": "主角名称",
+  "supportElements": ["辅助元素1", "辅助元素2"]
+}`;
+
+      // 调用AI服务获取响应
+      const response = await this.ollamaService.chat([
+        { role: 'user', content: prompt }
+      ]);
+      
+      // 解析响应JSON
+      try {
+        let extractedElements;
+        try {
+          extractedElements = JSON.parse(response);
+        } catch (parseError) {
+          // 如果直接解析失败，尝试从文本中提取JSON部分
+          console.log(`[StagedMemory] 直接解析JSON失败，尝试提取JSON部分`);
+          const jsonMatch = response.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            extractedElements = JSON.parse(jsonMatch[0]);
+          } else {
+            throw new Error('无法从响应中提取JSON');
+          }
+        }
+        
+        // 更新会话的创意元素（保持原有功能）
+        if (!conversation.creativeElements) {
+          conversation.creativeElements = {};
+        }
+        
+        if (extractedElements.theme) {
+          conversation.creativeElements.theme = extractedElements.theme;
+          console.log(`[StagedMemory] 提取到主题: ${extractedElements.theme}`);
+        }
+        
+        if (extractedElements.mainCharacter) {
+          conversation.creativeElements.mainCharacter = extractedElements.mainCharacter;
+          console.log(`[StagedMemory] 提取到主角: ${extractedElements.mainCharacter}`);
+        }
+        
+        if (extractedElements.supportElements && Array.isArray(extractedElements.supportElements)) {
+          conversation.creativeElements.supportElements = extractedElements.supportElements;
+          console.log(`[StagedMemory] 提取到辅助元素: ${extractedElements.supportElements.join(', ')}`);
+        }
+        
+        // 创建阶段记忆项
+        const keywords = [];
+        if (extractedElements.mainCharacter) keywords.push(extractedElements.mainCharacter);
+        if (extractedElements.theme) keywords.push(extractedElements.theme);
+        if (extractedElements.supportElements) keywords.push(...extractedElements.supportElements);
+        
+        // 构建阶段A的总结文本
+        const summary = `本次创作的主题是"${extractedElements.theme || '未确定'}"，主角是"${extractedElements.mainCharacter || '未确定'}"${
+          extractedElements.supportElements && extractedElements.supportElements.length > 0 
+            ? `，包含元素：${extractedElements.supportElements.join('、')}` 
+            : ''
+        }。`;
+        
+        // 创建并存储阶段记忆
+        const memoryItem: StagedMemoryItem = {
+          stage: 'A',
+          summary,
+          keywords,
+          timestamp: Date.now()
+        };
+        
+        this.storeMemory(conversation.id, memoryItem);
+        
+        console.log(`[StagedMemory] A阶段记忆总结完成，长度: ${summary.length}`);
+        return memoryItem;
+        
+      } catch (error) {
+        console.error('[StagedMemory] 解析A阶段总结响应失败:', error);
+        return this.fallbackAStageSummary(conversation);
+      }
+    } catch (error) {
+      console.error('[StagedMemory] 总结A阶段记忆时出错:', error);
+      return null;
+    }
+  }
+
+  /**
+   * A阶段总结备用方法
+   */
+  private fallbackAStageSummary(conversation: Conversation): StagedMemoryItem | null {
+    // 简单提取最后一条消息作为关键内容
+    const lastUserMessage = conversation.messages
+      .filter(m => m.role === 'user')
+      .pop();
+      
+    if (!lastUserMessage) return null;
+    
+    // 创建简单的记忆项
+    const memoryItem: StagedMemoryItem = {
+      stage: 'A',
+      summary: `用户表达的创作意向: ${lastUserMessage.content}`,
+      keywords: [lastUserMessage.content.substring(0, 20)],
+      timestamp: Date.now()
+    };
+    
+    this.storeMemory(conversation.id, memoryItem);
+    console.log(`[StagedMemory] A阶段备用总结完成`);
+    return memoryItem;
   }
 } 

@@ -9,7 +9,7 @@ export class StageTransitionTrigger {
   private static instance: StageTransitionTrigger;
   private stagedMemory: StagedMemory;
   private lastStageByConversation: Map<string, ConversationStage>;
-  private skipStageSummary: ConversationStage[] = ['A']; // 不需要总结的阶段列表
+  private skipStageSummary: ConversationStage[] = ['A', 'B1']; // 不需要总结的阶段列表
   
   // 私有构造函数
   private constructor() {
@@ -36,8 +36,24 @@ export class StageTransitionTrigger {
     const conversationId = conversation.id;
     const currentStage = conversation.currentStage;
     
-    // 获取上一个记录的阶段
-    const lastStage = this.lastStageByConversation.get(conversationId) || currentStage;
+    // 获取上一个记录的阶段，如果没有记录则使用当前阶段
+    let lastStage = this.lastStageByConversation.get(conversationId);
+    
+    // 检查是否是首次阶段变更
+    if (!lastStage) {
+      console.log(`[StageTransitionTrigger] 首次检测阶段变更，当前阶段: ${currentStage}`);
+      
+      // 如果是从B1开始的会话(可能是从A阶段变化过来的)，特殊处理
+      if (currentStage === 'B1') {
+        console.log(`[StageTransitionTrigger] 检测到首次进入B1阶段，可能是从A阶段转换而来`);
+        // 手动模拟从A阶段变更
+        lastStage = 'A';
+      } else {
+        // 其他情况，记录当前阶段
+        this.lastStageByConversation.set(conversationId, currentStage);
+        return false;
+      }
+    }
     
     // 检查是否发生阶段转换
     if (lastStage !== currentStage) {
@@ -68,7 +84,27 @@ export class StageTransitionTrigger {
     prevStage: ConversationStage, 
     currentStage: ConversationStage
   ): Promise<void> {
-    // 检查是否为不需要总结的阶段
+    // A阶段特殊处理：调用StagedMemory的A阶段总结方法
+    if (prevStage === 'A') {
+      console.log(`[StageTransitionTrigger] 检测到从A阶段转换，执行A阶段总结`);
+      try {
+        console.log(`[StageTransitionTrigger] 开始调用StagedMemory.summarizeAStage`);
+        const memoryItem = await this.stagedMemory.summarizeAStage(conversation);
+        
+        if (memoryItem) {
+          console.log(`[StageTransitionTrigger] A阶段记忆总结成功`);
+          console.log(`[StageTransitionTrigger] 记忆总结: ${memoryItem.summary}`);
+          console.log(`[StageTransitionTrigger] 关键词: ${memoryItem.keywords.join(', ')}`);
+        } else {
+          console.log(`[StageTransitionTrigger] A阶段没有生成记忆总结`);
+        }
+      } catch (error) {
+        console.error(`[StageTransitionTrigger] A阶段总结过程出错:`, error);
+      }
+      return;
+    }
+    
+    // 检查是否为不需要总结的阶段（从A阶段移除，因为已有专门处理）
     if (this.skipStageSummary.includes(prevStage)) {
       console.log(`[StageTransitionTrigger] 跳过阶段${prevStage}记忆总结，因为此阶段不需要总结`);
       return;
@@ -103,6 +139,7 @@ export class StageTransitionTrigger {
     if (currentStage === 'D') {
       console.log(`[StageTransitionTrigger] 检测到进入完成阶段D，总结前一阶段并准备最终总结`);
       await this.summarizeLastStage(conversation, prevStage, currentStage);
+      
       // 可以在这里添加生成整个创作过程的完整总结的代码
       return;
     }
