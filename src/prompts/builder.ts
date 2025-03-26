@@ -3,7 +3,8 @@ import { systemBasePrompt, extractPersonaPart, extractTonePart } from './system'
 import { stagePrompts, getStageFormatRequirements } from './stages';
 import { themePrompts, getExamplarByThemeAndStage } from './themes';
 import { formatMessagesToPrompt, formatCreativeElements } from './memory';
-import { Message } from '@/types/conversation';
+import { Message, ConversationStage, ThemeCategory } from '@/types/conversation';
+import { StagedMemory } from '@/services/memory/staged/StagedMemory';
 
 export class PromptBuilder {
   /**
@@ -32,8 +33,9 @@ export class PromptBuilder {
   ): string {
     // 1. 获取各功能层内容
     const systemBase = systemBasePrompt;
-    const stagePrompt = stagePrompts[state.currentStage];
-    const themePrompt = state.themeDetected ? themePrompts[state.themeDetected] : '';
+    // 使用类型转换确保类型安全
+    const stagePrompt = stagePrompts[state.currentStage as keyof typeof stagePrompts];
+    const themePrompt = state.themeDetected ? themePrompts[state.themeDetected as keyof typeof themePrompts] : '';
     
     console.log(`[PromptBuilder] 构建阶段${state.currentStage}提示词, needSummary: ${creativeElements?.needSummary}`);
     if (creativeElements?.mainCharacter) {
@@ -94,24 +96,25 @@ export class PromptBuilder {
         console.log(`[PromptBuilder] 使用外部提供的阶段记忆总结，长度: ${extractedStagedMemories.length}`);
       }
     } else {
-      // 如果是消息数组，应用智能过滤和优化
+      // 如果是消息数组，使用StagedMemory获取当前阶段的消息
       console.log(`[PromptBuilder] 开始处理消息数组，长度: ${messagesOrFormattedMemory.length}，当前阶段: ${state.currentStage}`);
       
-      // 应用严格过滤，移除已总结阶段的消息
-      const filteredMessages = this.optimizeMessagesForStage(
+      // 直接使用StagedMemory获取当前阶段的消息
+      const optimizedMessages = this.optimizeMessagesForStage(
         messagesOrFormattedMemory, 
         this.getMessageLimitForStage(state.currentStage), 
         state.currentStage,
-        summarizedStages
+        summarizedStages,
+        state.conversationId
       );
       
       // 只有在还有消息需要保留的情况下才格式化，否则可能返回空
-      if (filteredMessages.length > 0) {
-        messagesPrompt = formatMessagesToPrompt(filteredMessages);
-        console.log(`[PromptBuilder] 消息过滤完成：原始${messagesOrFormattedMemory.length}条 -> 过滤后${filteredMessages.length}条，已排除阶段: ${summarizedStages.join(', ')}`);
+      if (optimizedMessages.length > 0) {
+        messagesPrompt = formatMessagesToPrompt(optimizedMessages);
+        console.log(`[PromptBuilder] 消息优化完成：原始${messagesOrFormattedMemory.length}条 -> 优化后${optimizedMessages.length}条，当前阶段: ${state.currentStage}`);
       } else {
         messagesPrompt = '尚无对话历史';
-        console.log(`[PromptBuilder] 所有消息均已过滤，返回空历史`);
+        console.log(`[PromptBuilder] 当前阶段无消息，返回空历史`);
       }
     }
     
@@ -134,7 +137,7 @@ export class PromptBuilder {
       state.currentStage
     );
     const exemplar = state.themeDetected ? 
-      getExamplarByThemeAndStage(state.themeDetected, state.currentStage) : '';
+      getExamplarByThemeAndStage(state.themeDetected as ThemeCategory, state.currentStage as ConversationStage) : '';
     
     // 只在B1阶段添加特殊指令
     let specialInstructions = '';
@@ -196,137 +199,36 @@ ${exemplar ? `<exemplar>\n${exemplar}\n</exemplar>\n` : ''}
   
   /**
    * 针对不同阶段优化消息，移除已总结阶段的消息
-   * 注意：这个方法现在会优先尝试从StagedMemory中获取当前阶段的消息
+   * 使用StagedMemory获取指定阶段的消息
    */
   private optimizeMessagesForStage(
     messages: Message[], 
     limit: number, 
-    currentStage: string,
-    summarizedStages: string[] = []
+    currentStage: ConversationStage | string,
+    summarizedStages: string[] = [],
+    conversationId?: string
   ): Message[] {
     if (messages.length === 0) return messages;
-    console.log(`[PromptBuilder] 开始消息优化，当前阶段: ${currentStage}, 已总结阶段: ${summarizedStages.join(', ')}`);
     
-    // 推荐使用StagedMemory提供的阶段消息功能
-    // 这里保留原来的逻辑作为备选，以确保向后兼容
-    
-    // 如果没有已总结的阶段，直接应用基本限制
-    if (summarizedStages.length === 0) {
-      // 根据阶段应用不同的保留策略
-      return messages.slice(-limit);
-    }
-    
-    // 寻找阶段转换消息
-    const stageTransitions: {index: number, toStage: string}[] = [];
-    
-    messages.forEach((message, index) => {
-      if (message.role === 'assistant' && message.content) {
-        // 检查是否包含阶段更新信息
-        const stageUpdateMatch = message.content.match(/阶段更新\s*(\w+)\s*->\s*(\w+)/);
-        if (stageUpdateMatch) {
-          stageTransitions.push({
-            index,
-            toStage: stageUpdateMatch[2] // 转换后的阶段
-          });
-          console.log(`[PromptBuilder] 找到阶段转换点: 索引${index}, ${stageUpdateMatch[1]} -> ${stageUpdateMatch[2]}`);
-        }
+    // 如果提供了会话ID，则直接使用StagedMemory获取当前阶段的消息
+    if (conversationId) {
+      const stagedMemory = StagedMemory.getInstance();
+      const stageMessages = stagedMemory.getStageMessages(conversationId, currentStage as ConversationStage);
+      
+      console.log(`[PromptBuilder] 直接从StagedMemory获取阶段${currentStage}的消息: ${stageMessages.length}条`);
+      
+      // 如果消息数量超过限制，应用基本限制
+      if (stageMessages.length > limit) {
+        console.log(`[PromptBuilder] 阶段${currentStage}消息超过限制(${limit})，应用裁剪`);
+        return stageMessages.slice(-limit);
       }
-    });
-    
-    // 如果没有找到阶段转换消息，执行更精确的检查
-    if (stageTransitions.length === 0) {
-      console.log('[PromptBuilder] 未找到明确的阶段转换消息，尝试根据上下文推断');
-      // 根据消息内容推断阶段
-      messages.forEach((message, index) => {
-        if (message.role === 'assistant' && message.content) {
-          // 检查是否包含特定阶段的关键词或提示
-          if (message.content.includes('角色设定完成') || message.content.includes('我们来开始塑造主角')) {
-            stageTransitions.push({
-              index,
-              toStage: 'B1'
-            });
-            console.log(`[PromptBuilder] 推断阶段转换点: 索引${index}, -> B1`);
-          } else if (message.content.includes('角色塑造') && message.content.includes('继续完善')) {
-            stageTransitions.push({
-              index,
-              toStage: 'B2'
-            });
-            console.log(`[PromptBuilder] 推断阶段转换点: 索引${index}, -> B2`);
-          } else if (message.content.includes('开始构建故事') || message.content.includes('故事开端')) {
-            stageTransitions.push({
-              index,
-              toStage: 'C1'
-            });
-            console.log(`[PromptBuilder] 推断阶段转换点: 索引${index}, -> C1`);
-          }
-        }
-      });
+      
+      return stageMessages;
     }
     
-    // 找出需要过滤的消息区间
-    const filteredRanges: {start: number, end: number}[] = [];
-    
-    // 处理没有明确转换点的简单情况
-    if (stageTransitions.length === 0) {
-      // 如果总结了阶段B，过滤前半部分消息
-      if (summarizedStages.includes('B') || summarizedStages.includes('B1') || summarizedStages.includes('B2')) {
-        const midPoint = Math.floor(messages.length / 2);
-        filteredRanges.push({
-          start: 0,
-          end: midPoint - 1
-        });
-        console.log(`[PromptBuilder] 无法检测到阶段转换，基于B阶段总结估算区间: 0 - ${midPoint - 1}`);
-      }
-    } else {
-      // 标记每个区间的起始和结束
-      for (let i = 0; i < stageTransitions.length; i++) {
-        const transition = stageTransitions[i];
-        const nextTransitionIndex = i < stageTransitions.length - 1 ? stageTransitions[i + 1].index : messages.length;
-        
-        // 检查该阶段是否已被总结
-        const stageName = transition.toStage;
-        const stageGroupB = ['B1', 'B2'].includes(stageName) ? 'B' : null;
-        const stageGroupC = ['C1', 'C2'].includes(stageName) ? 'C' : null;
-        
-        // 如果阶段或其所属组已被总结，记录该区间
-        if (summarizedStages.includes(stageName) || 
-            (stageGroupB && summarizedStages.includes(stageGroupB)) ||
-            (stageGroupC && summarizedStages.includes(stageGroupC))) {
-          filteredRanges.push({
-            start: transition.index,
-            end: nextTransitionIndex - 1
-          });
-          console.log(`[PromptBuilder] 标记需要过滤的阶段 ${stageName} 区间: ${transition.index} - ${nextTransitionIndex - 1}`);
-        }
-      }
-    }
-    
-    // 检查当前阶段是否有特殊处理需求
-    if (currentStage === 'C1' && summarizedStages.includes('B')) {
-      console.log('[PromptBuilder] 当前C1阶段，B阶段已总结，过滤逻辑已激活');
-    }
-    
-    // 过滤掉已总结阶段的消息
-    let filteredMessages = messages;
-    if (filteredRanges.length > 0) {
-      filteredMessages = messages.filter((message, index) => {
-        // 检查该消息是否在需要过滤的区间内
-        const shouldFilter = filteredRanges.some(range => index >= range.start && index <= range.end);
-        if (shouldFilter) {
-          console.log(`[PromptBuilder] 过滤掉索引${index}的消息`);
-        }
-        return !shouldFilter;
-      });
-      console.log(`[PromptBuilder] 阶段过滤后剩余消息: ${filteredMessages.length}`);
-    }
-    
-    // 如果过滤后消息超过限制，应用基本限制
-    if (filteredMessages.length > limit) {
-      console.log(`[PromptBuilder] 过滤后消息数(${filteredMessages.length})超过限制(${limit})，应用消息限制裁剪`);
-      return filteredMessages.slice(-limit);
-    }
-    
-    return filteredMessages;
+    // 如果没有提供会话ID，则保留一个简单的基本限制策略作为备选
+    console.log(`[PromptBuilder] 未提供会话ID，使用基本限制策略: 限制为${limit}条消息`);
+    return messages.slice(-limit);
   }
   
   // 映射系统基础层到persona和tone

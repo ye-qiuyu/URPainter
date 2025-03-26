@@ -86,13 +86,13 @@ export function getStageFormatRequirements(stage: ConversationStage): string {
     case 'C1':
       return `
 回复应包含:
+1. 鼓励儿童联想画面新元素
       `;
     
     case 'C2':
       return `
 回复应包含:
-2. 关于该元素的1-2个细节引导问题
-5. 完成描述后，轻松询问是否还想添加其他元素
+1. 关于该元素的1-2个细节引导问题
       `;
     
     case 'D':
